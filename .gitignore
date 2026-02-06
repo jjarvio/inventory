@@ -7,7 +7,6 @@ config.local.php
 # Logs
 *.log
 logs/
-.error_log
 
 # Temp
 tmp/
@@ -17,3 +16,9 @@ cache/
 .DS_Store
 .vscode/
 .idea/
+
+# PHP error logs
+**/error_log
+
+# Cron logs
+cron/logs/*.log
