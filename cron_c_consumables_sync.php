@@ -13,9 +13,7 @@
  * - Tuotekuva siirtyy automaattisesti (Woo images src), vain jos tuotteella ei vielä ole kuvaa
  */
 
-// ==================================================
 // BOOTSTRAP (ENV)
-// ==================================================
 
 require __DIR__ . '/bootstrap.php';
 
@@ -24,28 +22,24 @@ if (php_sapi_name() !== 'cli') {
     exit;
 }
 
-// ==================================================
 // CONFIG (ENV)
-// ==================================================
 
 $DEBUG = filter_var(getenv('CRON_C_DEBUG'), FILTER_VALIDATE_BOOLEAN);
 
-$SNIPE_BASE_URL  = rtrim(getenv('SNIPE_BASE_URL'), '/'); // .../public/index.php
+$SNIPE_BASE_URL  = rtrim(getenv('SNIPE_BASE_URL'), '/'); 
 $SNIPE_API_TOKEN = getenv('SNIPE_API_TOKEN');
 
 $WOO_BASE_URL         = rtrim(getenv('WOO_URL'), '/');
 $WOO_CONSUMER_KEY     = getenv('WOO_CONSUMER_KEY');
-$WOO_CONSUMER_SECRET  = getenv('WOO_CONSUMER_SECRET'); // korjattu: ei WOO_CONER_SECRET
+$WOO_CONSUMER_SECRET  = getenv('WOO_CONSUMER_SECRET'); 
 
 $SALES_SUFFIX = getenv('SALES_SUFFIX') ?: '-myynnissä';
 
 $LOG_FILE = rtrim(getenv('LOG_PATH'), '/') . '/cron_c_consumables.log';
 
-const DRY_RUN = false; // voit halutessa viedä ENV:iin myöhemmin
+const DRY_RUN = false; 
 
-// ==================================================
 // BASIC VALIDATION (FAIL FAST)
-// ==================================================
 
 foreach ([
     'SNIPE_BASE_URL'      => $SNIPE_BASE_URL,
@@ -60,9 +54,7 @@ foreach ([
     }
 }
 
-// ==================================================
 // HELPERS
-// ==================================================
 
 function log_line(string $msg): void {
     global $LOG_FILE;
@@ -99,9 +91,7 @@ function http_request(string $method, string $url, array $headers = [], ?string 
     ];
 }
 
-// ==================================================
 // AUTH / NORMALIZATION
-// ==================================================
 
 function snipe_headers(): array {
     global $SNIPE_API_TOKEN;
@@ -127,28 +117,20 @@ function category_is_for_sale(string $category): bool {
 }
 
 function derive_woo_category_name(string $snipeCategory): string {
-    // Poistaa vain lopusta "-myynnissä" (iso/pieni ok)
     return trim(preg_replace('/-myynnissä$/iu', '', trim($snipeCategory)));
 }
 
-// Snipe-IT image kenttä voi olla:
-// - null
-// - "consumables/xxx.jpg"
-// - "/uploads/consumables/xxx.jpg"
-// - "https://.../uploads/consumables/xxx.jpg"
+
 function normalize_snipe_image_url(?string $imagePath): ?string {
     global $SNIPE_BASE_URL;
 
     if (!$imagePath) return null;
 
-    // Absolute URL
     if (preg_match('#^https?://#i', $imagePath)) {
         return $imagePath;
     }
 
-    // Ensure we build absolute URL to uploads
-    // Your SNIPE_BASE_URL is ".../public/index.php" -> we should not append "/uploads" after index.php.
-    // We'll strip "/public/index.php" from end to get app root URL for uploads.
+    
     $root = $SNIPE_BASE_URL;
     $root = preg_replace('#/public/index\.php$#i', '', $root);
 
@@ -159,9 +141,7 @@ function normalize_snipe_image_url(?string $imagePath): ?string {
     return $root . '/uploads/' . ltrim($imagePath, '/');
 }
 
-// ==================================================
 // WOO API
-// ==================================================
 
 function woo_get_product_by_sku(string $sku): ?array {
     global $WOO_BASE_URL;
@@ -249,9 +229,7 @@ function woo_has_been_published_from_meta(array $woo): bool {
     return false;
 }
 
-// ==================================================
 // SNIPE API
-// ==================================================
 
 function snipe_get_consumables(int $offset, int $limit): array {
     global $SNIPE_BASE_URL;
@@ -259,9 +237,7 @@ function snipe_get_consumables(int $offset, int $limit): array {
     return http_request('GET', $url, snipe_headers());
 }
 
-// ==================================================
 // MAIN
-// ==================================================
 
 log_line("=== Cron C Consumables START ===");
 debugMsg("SNIPE_BASE_URL=$GLOBALS[SNIPE_BASE_URL]");
@@ -291,7 +267,7 @@ while (true) {
 
         $id       = (int)($c['id'] ?? 0);
         $name     = (string)($c['name'] ?? '');
-        $price    = (string)($c['purchase_cost'] ?? '0'); // ✅ hinta mukana kuten alkuperäisessä
+        $price    = (string)($c['purchase_cost'] ?? '0'); 
         $qty      = (int)($c['remaining'] ?? 0);
         $category = (string)($c['category']['name'] ?? '');
         $sku      = "snipe-consumable-$id";
@@ -300,13 +276,13 @@ while (true) {
             continue;
         }
 
-        // 🔒 synkataan vain myyntiin merkityt
+        // synkataan vain myyntiin merkityt
         $isForSale = category_is_for_sale($category);
 
-        // Hae Woo-tuote (tarvitaan myös hide-polussa)
+        // Hae Woo-tuote 
         $woo = woo_get_product_by_sku($sku);
 
-        // 🚫 EI ENÄÄ MYYNNISSÄ → PIILOTA WOO-TUOTE
+        // EI ENÄÄ MYYNNISSÄ → PIILOTA WOO-TUOTE
         if (!$isForSale) {
             if ($woo) {
                 log_line("HIDE (category changed) {$woo['id']} $name");
@@ -315,10 +291,10 @@ while (true) {
                     'catalog_visibility' => 'hidden',
                 ]);
             }
-            continue; // älä jatka tämän tuotteen muuta käsittelyä
+            continue; 
         }
 
-        // 🏷 Woo-kategoria (ilman -myynnissä) + luonti jos puuttuu
+        // Woo-kategoria + luonti jos puuttuu
         $wooCategoryName = derive_woo_category_name($category);
         $wooCat = $wooCategoryName !== '' ? woo_get_category_by_name($wooCategoryName) : null;
 
@@ -332,23 +308,23 @@ while (true) {
             $categoriesPayload[] = ['id' => (int)$wooCat['id']];
         }
 
-        // 🖼 kuva (vain jos tuotteella ei ole kuvaa)
+        // kuva (vain jos tuotteella ei ole kuvaa)
         $imageUrl = normalize_snipe_image_url($c['image'] ?? null);
 
-        // 🔑 onko tuote ollut joskus myynnissä
+        // onko tuote ollut joskus myynnissä
         $hasBeenPublished = $woo ? woo_has_been_published_from_meta($woo) : false;
 
-        // ✅ jos tuote on publish-tilassa (ihminen julkaissut) → muistiin
+        // jos tuote on publish-tilassa (ihminen julkaissut) → muistiin
         if ($woo && (($woo['status'] ?? '') === 'publish')) {
             $hasBeenPublished = true;
         }
 
-        // 👁 näkyvyys
+        //  näkyvyys
         // - qty=0 → piiloon
         // - qty>0 → näkyy vain jos ollut aiemmin julkaistu
         $visible = ($qty > 0) && $hasBeenPublished;
 
-        // ✅ Payload säilyttää kaikki sun alkuperäiset metat
+        // Säilyttää kaikki alkuperäiset metat
         $payload = [
             'name'               => $name,
             'sku'                => $sku,
@@ -366,7 +342,7 @@ while (true) {
             ],
         ];
 
-        // 🖼 lisää kuva VAIN jos:
+        //   lisää kuva VAIN jos:
         // - Snipe-kuva löytyy
         // - Woo-tuotteella ei vielä ole kuvia
         if ($imageUrl && (!$woo || empty($woo['images']))) {
@@ -374,7 +350,7 @@ while (true) {
             $payload['images'] = [['src' => $imageUrl]];
         }
 
-        // ✅ UUSI tuote luodaan private/hidden (visible=false koska hasBeenPublished=false)
+        // UUSI tuote luodaan private/hidden (visible=false koska hasBeenPublished=false)
         if (!$woo) {
             log_line("CREATE $name qty=$qty visible=" . ($visible ? 'yes' : 'no') . " cat='$wooCategoryName'");
             woo_create_product($payload);

@@ -9,9 +9,8 @@
  * - Estää tuplakäsittelyn (_snipe_synced)
  */
 
-// ==================================================
+
 // BOOTSTRAP (ENV)
-// ==================================================
 
 require __DIR__ . '/bootstrap.php';
 
@@ -20,9 +19,8 @@ if (php_sapi_name() !== 'cli') {
     exit;
 }
 
-// ==================================================
+
 // CONFIG (ENV)
-// ==================================================
 
 $DEBUG = filter_var(getenv('CRON_B_DEBUG'), FILTER_VALIDATE_BOOLEAN);
 
@@ -38,9 +36,8 @@ $LOG_FILE            = rtrim(getenv('LOG_PATH'), '/') . '/cron_b_orders.log';
 
 const DRY_RUN = false;
 
-// ==================================================
+
 // BASIC VALIDATION
-// ==================================================
 
 $required = [
     'WOO_URL'             => $WOO_BASE_URL,
@@ -57,9 +54,8 @@ foreach ($required as $key => $value) {
     }
 }
 
-// ==================================================
+
 // LOG / DEBUG
-// ==================================================
 
 function log_line(string $msg): void
 {
@@ -77,9 +73,8 @@ function debugMsg(string $msg): void
     }
 }
 
-// ==================================================
+
 // HTTP
-// ==================================================
 
 function http_request(string $method, string $url, array $headers = [], ?string $body = null): array
 {
@@ -104,9 +99,8 @@ function http_request(string $method, string $url, array $headers = [], ?string 
     ];
 }
 
-// ==================================================
-// WOO
-// ==================================================
+
+// Woocommerce
 
 function woo_auth(): string
 {
@@ -158,9 +152,8 @@ function mark_order_synced(int $order_id): void
     );
 }
 
-// ==================================================
+
 // SNIPE
-// ==================================================
 
 function snipe_headers(): array
 {
@@ -200,9 +193,7 @@ function snipe_checkout(int $consumable_id, int $qty, int $order_id): bool
     return true;
 }
 
-// ==================================================
 // RUN
-// ==================================================
 
 log_line('=== Cron B Orders START ===');
 
