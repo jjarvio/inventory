@@ -7,6 +7,7 @@ config.local.php
 # Logs
 *.log
 logs/
+.error_log
 
 # Temp
 tmp/
