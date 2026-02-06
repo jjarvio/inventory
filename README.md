@@ -240,5 +240,5 @@ Suunnitteilla:
 
 ## Tekijä
 
-**Joni Järviö**
+**jjarvio**
 Inventory 2.0
