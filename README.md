@@ -225,19 +225,6 @@ Tarkista `logs/`-hakemisto mahdollisten virheiden varalta ennen tuotantokäyttö
 
 ---
 
-## Projektin tila
-
-🚧 **Aktiivisessa kehityksessä**
-
-Suunnitteilla:
-
-* Tarkempi virheluokittelu
-* Webhook-pohjainen tilausten käsittely
-* Yksikkötestit
-* Docker-kehitysympäristö
-
----
-
 ## Tekijä
 
 **jjarvio**
