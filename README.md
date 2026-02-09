@@ -1,6 +1,6 @@
 # Inventory 2.0
 
-**Production-ready Snipe-IT ↔ WooCommerce -integraatio**
+**Snipe-IT ↔ WooCommerce -integraatio**
 
 Inventory 2.0 on PHP-pohjainen integraatio, joka synkronoi **Snipe-IT**-inventaariojärjestelmän ja **WooCommerce**-verkkokaupan varastosaldot ja tuotteiden näkyvyyden hallitusti ja turvallisesti.
 
@@ -18,7 +18,7 @@ Ratkaisu on suunniteltu *production-käyttöön*: automaatio ei koskaan julkaise
 
   * Uusia tuotteita ei koskaan julkaista automaattisesti
   * Ihminen hyväksyy tuotteen kerran, automaatio hoitaa jatkon
-* 📦 **Consumables- ja Components-tuki**
+* 📦 **Consumables-tuki**
 * 🧠 **Kategoriapohjainen hallinta** (`-myynnissä`-pääte)
 * 🧾 **Idempotentit cron-ajot** (ei kaksoiskäsittelyä)
 * 🪵 **Lokitus virheiden selvitykseen ja auditointiin**
@@ -73,7 +73,6 @@ Ajetaan ajastetusti käsittelemään WooCommercen valmiit tilaukset.
 4. Vähennetään varastosaldo:
 
    * Consumables
-   * Components
 5. Merkitään tilaus synkatuksi (order meta)
 
 **Takuut:**
@@ -126,7 +125,7 @@ Ratkaisu pakottaa **ihminen mukana -mallin** ensimmäisessä julkaisussa.
 
 ---
 
-## Asennus (nykyinen toteutus)
+## Asennus 
 
 ### 1. Repositorion kloonaus
 
@@ -224,7 +223,6 @@ Tarkista `logs/`-hakemisto mahdollisten virheiden varalta ennen tuotantokäyttö
 * Ajo on turvallista toistaa (idempotentti)
 
 ---
-
 ## Tekijä
 
 **jjarvio**
