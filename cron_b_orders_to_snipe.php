@@ -1,4 +1,5 @@
 <?php
+define('CRON_B_INCLUDED', true);
 /**
  * Cron B – Orders → Snipe-IT 
  *
@@ -11,13 +12,26 @@
 
 
 // BOOTSTRAP (ENV)
-
+define('WEBHOOK_CONTEXT', true);
 require __DIR__ . '/bootstrap.php';
 
-if (php_sapi_name() !== 'cli') {
+if (!defined('CRON_B_INCLUDED') && php_sapi_name() !== 'cli') {
     http_response_code(403);
     exit;
 }
+
+$lockFile = '/home/jonitiet/cron/locks/cron_b.lock';
+
+if (file_exists($lockFile) && (time() - filemtime($lockFile)) < 300) {
+    echo "[LOCK] Cron B already running, exit\n";
+    exit;
+}
+
+touch($lockFile);
+register_shutdown_function(fn() => @unlink($lockFile));
+
+
+
 
 
 // CONFIG (ENV)
@@ -35,6 +49,47 @@ $SNIPE_LOCATION_ID   = (int) getenv('SNIPE_LOCATION_ID');
 $LOG_FILE            = rtrim(getenv('LOG_PATH'), '/') . '/cron_b_orders.log';
 
 const DRY_RUN = false;
+
+// -----------------------------------------------------------------------------
+// WEBHOOK QUEUE HANDLING (runs first)
+// -----------------------------------------------------------------------------
+
+$queueDir  = rtrim(getenv('WEBHOOK_QUEUE_PATH'), '/');
+$doneDir   = $queueDir . '/done';
+$failedDir = $queueDir . '/failed';
+
+$files = glob($queueDir . '/order_*.json') ?: [];
+
+foreach ($files as $file) {
+
+    $payload = json_decode(file_get_contents($file), true);
+    $orderId = $payload['order_id'] ?? null;
+
+    if (!$orderId) {
+        // rikkinäinen tiedosto → failed
+        rename($file, $failedDir . '/' . basename($file));
+        log_line("[QUEUE] Invalid payload → moved to failed");
+        continue;
+    }
+
+    try {
+        log_line("[QUEUE] Processing order {$orderId}");
+
+        process_order_from_woocommerce((int)$orderId);
+
+        // onnistui → done
+        rename($file, $doneDir . '/' . basename($file));
+        log_line("[QUEUE] Order {$orderId} processed → moved to done");
+
+    } catch (Throwable $e) {
+
+        // oikea virhe → failed
+        rename($file, $failedDir . '/' . basename($file));
+
+        log_line("[QUEUE][ERROR] Order {$orderId} failed → moved to failed");
+        log_line("[QUEUE][ERROR] " . $e->getMessage());
+    }
+}
 
 
 // BASIC VALIDATION
@@ -193,28 +248,34 @@ function snipe_checkout(int $consumable_id, int $qty, int $order_id): bool
     return true;
 }
 
-// RUN
+function process_order_from_woocommerce(int $order_id): void
+{
+    // Hae yksittäinen order WooCommercesta
+    global $WOO_BASE_URL;
 
-log_line('=== Cron B Orders START ===');
+    $orders = woo_get_orders();
 
-debugMsg('Cron B started');
+    $order = null;
+    foreach ($orders as $o) {
+        if ((int)$o['id'] === $order_id) {
+            $order = $o;
+            break;
+        }
+    }
 
-$orders = woo_get_orders();
-debugMsg('Orders fetched: ' . count($orders));
+    if (!$order) {
+        // Tilaus ei ole enää uusimpien joukossa → todennäköisesti jo käsitelty
+        log_line("ORDER $order_id not found in Woo list → assume already handled");
+        return;
+    }
 
-if (empty($orders)) {
-    debugMsg('No orders to process, exiting');
-    exit;
-}
 
-foreach ($orders as $order) {
 
-    $order_id = (int) $order['id'];
-    debugMsg("Processing order $order_id status={$order['status']}");
+    // --- TÄSTÄ ALKAA SUORAAN SUN NYKYINEN POLLING-LOGIIKKA ---
 
     if (order_has_meta($order, '_snipe_synced')) {
         log_line("ORDER $order_id already synced → skip");
-        continue;
+        return;
     }
 
     $consumables = [];
@@ -236,12 +297,12 @@ foreach ($orders as $order) {
     if (empty($consumables)) {
         log_line("ORDER $order_id has no Snipe items");
         mark_order_synced($order_id);
-        continue;
+        return;
     }
 
     foreach ($consumables as $cid => $qty) {
         if (!snipe_checkout($cid, $qty, $order_id)) {
-            continue 2;
+            throw new RuntimeException("Snipe checkout failed for order $order_id");
         }
     }
 
@@ -249,4 +310,24 @@ foreach ($orders as $order) {
     log_line("ORDER $order_id marked as synced");
 }
 
-log_line('=== Cron B Orders END ===');
+
+// RUN (only when executed via CLI)
+if (php_sapi_name() === 'cli') {
+
+    log_line('=== Cron B Orders START ===');
+
+    $orders = woo_get_orders();
+    foreach ($orders as $order) {
+        process_order_from_woocommerce((int)$order['id']);
+    }
+
+    log_line('=== Cron B Orders END ===');
+}
+
+
+// Cleanup old done files (>7 days)
+foreach (glob($doneDir . '/order_*.json') as $f) {
+    if (filemtime($f) < time() - 7 * 86400) {
+        unlink($f);
+    }
+}
