@@ -1,15 +1,5 @@
 <?php
 define('CRON_B_INCLUDED', true);
-/**
- * Cron B – Orders → Snipe-IT 
- *
- * - Hakee WooCommerce tilaukset (processing, completed)
- * - Aggregoi line_items → consumable qty
- * - Checkouttaa consumablen TASAN KERRAN / tilaus
- * - Luottaa Snipe-IT checkoutiin varastototuutena
- * - Estää tuplakäsittelyn (_snipe_synced)
- */
-
 
 // BOOTSTRAP (ENV)
 define('WEBHOOK_CONTEXT', true);

@@ -1,17 +1,4 @@
 <?php
-/**
- * Cron C – Consumables → WooCommerce
- *
- * Ominaisuudet:
- * - Synkkaa vain consumables joiden supplier.name == "myynnissä" (case-insensitive)
- * - Woo-kategoria = Snipe-kategoria sellaisenaan
- *   - jos Woo-kategoriaa ei ole → luo automaattisesti
- * - UUSI tuote: luodaan piilotettuna (private/hidden)
- * - Kun tuote on kerran publish (ihminen julkaissut) → muistetaan (_snipe_has_been_published=yes)
- * - qty=0 → piilotetaan
- * - qty>0 + ollut aiemmin julkaistu → julkaistaan automaattisesti
- * - Tuotekuva siirtyy automaattisesti (Woo images src), vain jos tuotteella ei vielä ole kuvaa
- */
 
 // BOOTSTRAP (ENV)
 

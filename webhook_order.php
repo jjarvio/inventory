@@ -2,8 +2,7 @@
 declare(strict_types=1);
 
 /**
- * WooCommerce Webhook → Queue only
- * EI käsittele varastoa
+ * WooCommerce Webhook → Queue 
  */
 
 require __DIR__ . '/bootstrap.php';
