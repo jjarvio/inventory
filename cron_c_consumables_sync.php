@@ -292,12 +292,28 @@ while (true) {
 
         $imageUrl = normalize_snipe_image_url($c['image'] ?? null);
 
-        $hasBeenPublished = $woo ? woo_has_been_published_from_meta($woo) : false;
+        $hasBeenPublished = false;
+
+        if ($woo) {
+            // jos meta kertoo että on ollut julkaistu
+            if (woo_has_been_published_from_meta($woo)) {
+                $hasBeenPublished = true;
+            }
+
+            // jos ihminen on joskus julkaissut (status publish milloin tahansa)
+            if (($woo['status'] ?? '') === 'publish') {
+                $hasBeenPublished = true;
+            }
+}
+
+
+        $visible = ($qty > 0) && $hasBeenPublished;
+
+        // Jos tuote on publish nyt, lukitse muisti pysyvästi
         if ($woo && ($woo['status'] ?? '') === 'publish') {
             $hasBeenPublished = true;
         }
 
-        $visible = ($qty > 0) && $hasBeenPublished;
 
         $payload = [
             'name'               => $name,
