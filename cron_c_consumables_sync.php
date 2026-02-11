@@ -217,9 +217,18 @@ function woo_has_been_published_from_meta(array $woo): bool {
 
 function snipe_get_consumables(int $offset, int $limit): array {
     global $SNIPE_BASE_URL;
-    $url = $SNIPE_BASE_URL . "/api/v1/consumables?limit=$limit&offset=$offset";
+
+    $search = urlencode("Myynnissä");
+
+    $url = $SNIPE_BASE_URL . "/api/v1/consumables"
+        . "?search_fields=supplier.name"
+        . "&search={$search}"
+        . "&limit={$limit}"
+        . "&offset={$offset}";
+
     return http_request('GET', $url, snipe_headers());
 }
+
 
 // MAIN
 
