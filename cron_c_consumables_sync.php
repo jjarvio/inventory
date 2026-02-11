@@ -213,6 +213,53 @@ function woo_has_been_published_from_meta(array $woo): bool {
     return false;
 }
 
+function hide_products_not_in_active_list(array $activeIds): void {
+    global $WOO_BASE_URL;
+
+    $page = 1;
+
+    while (true) {
+
+        $url = $WOO_BASE_URL . "/wp-json/wc/v3/products?"
+             . woo_auth()
+             . "&per_page=100&page=$page";
+
+        $res = http_request('GET', $url);
+
+        if (!$res['ok']) {
+            log_line("ERROR WOO list for hide failed");
+            break;
+        }
+
+        $products = $res['json'] ?? [];
+        if (empty($products)) break;
+
+        foreach ($products as $woo) {
+
+            $sku = $woo['sku'] ?? '';
+            if (strpos($sku, 'snipe-consumable-') !== 0) continue;
+
+            $snipeId = (int)str_replace('snipe-consumable-', '', $sku);
+
+            if (!in_array($snipeId, $activeIds, true)) {
+
+                if (($woo['status'] ?? '') !== 'private') {
+
+                    log_line("AUTO HIDE {$woo['id']} {$woo['name']} (supplier changed)");
+
+                    woo_update_product((int)$woo['id'], [
+                        'status' => 'private',
+                        'catalog_visibility' => 'hidden',
+                    ]);
+                }
+            }
+        }
+
+        $page++;
+    }
+}
+
+
 // SNIPE API
 
 function snipe_get_consumables(int $offset, int $limit): array {
@@ -234,8 +281,11 @@ function snipe_get_consumables(int $offset, int $limit): array {
 
 log_line("=== Cron C Consumables START ===");
 
+$activeSnipeIds = []; // <-- UUSI
+
 $offset = 0;
 $limit  = 100;
+
 
 while (true) {
 
@@ -254,6 +304,7 @@ while (true) {
     foreach ($rows as $c) {
 
         $id       = (int)$c['id'];
+        $activeSnipeIds[] = $id; 
         $name     = (string)$c['name'];
         $price    = (string)($c['purchase_cost'] ?? '0');
         $qty      = (int)($c['remaining'] ?? 0);
@@ -347,4 +398,7 @@ while (true) {
     if ($offset >= $total) break;
 }
 
+hide_products_not_in_active_list($activeSnipeIds);
+
 log_line("=== Cron C Consumables END ===");
+
