@@ -22,3 +22,5 @@ cache/
 
 # Cron logs
 cron/logs/*.log
+
+queue/
