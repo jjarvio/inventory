@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Inventory 2.0 Monitor
  * Description: Näyttää Inventory 2.0 cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
- * Version: 0.3.0
+ * Version: 0.3.1
  * Author: Inventory 2.0
  */
 
@@ -57,7 +57,6 @@ add_action('admin_init', function (): void {
         ]
     );
 
-    // Fallback: jos wp-cron ei laukea luotettavasti
     inv2_maybe_cleanup_logs();
 });
 
@@ -114,7 +113,7 @@ function inv2_maybe_cleanup_logs(): void
 
     foreach (['cron_b_log', 'cron_c_log'] as $key) {
         $path = $settings[$key] ?? '';
-        if (is_string($path) && $path !== '' && file_exists($path) && is_writable($path)) {
+        if ($path && file_exists($path) && is_writable($path)) {
             file_put_contents($path, '');
         }
     }
@@ -125,14 +124,11 @@ function inv2_maybe_cleanup_logs(): void
 function inv2_clear_logs_now(): array
 {
     $settings = inv2_get_settings();
-    $cleared = 0;
     $errors = [];
+    $cleared = 0;
 
     foreach (['cron_b_log', 'cron_c_log'] as $key) {
-        $path = $settings[$key] ?? '';
-        if (!is_string($path) || $path === '') {
-            continue;
-        }
+        $path = $settings[$key];
         if (!file_exists($path)) {
             $errors[] = "Lokia ei löytynyt: {$path}";
             continue;
@@ -141,20 +137,13 @@ function inv2_clear_logs_now(): array
             $errors[] = "Loki ei ole kirjoitettava: {$path}";
             continue;
         }
-        if (file_put_contents($path, '') === false) {
-            $errors[] = "Lokin tyhjennys epäonnistui: {$path}";
-            continue;
-        }
+        file_put_contents($path, '');
         $cleared++;
     }
 
     update_option(INV2_LAST_CLEANUP_OPTION_KEY, time(), false);
 
-    return [
-        'ok'      => empty($errors),
-        'cleared' => $cleared,
-        'errors'  => $errors,
-    ];
+    return ['ok' => empty($errors), 'cleared' => $cleared, 'errors' => $errors];
 }
 
 /* =======================
@@ -165,9 +154,6 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
     if (!file_exists($scriptPath)) {
         return ['ok' => false, 'output' => 'Scriptiä ei löydy: ' . $scriptPath];
     }
-    if (!is_executable($phpBinary)) {
-        return ['ok' => false, 'output' => 'PHP-binääri ei ole ajettava: ' . $phpBinary];
-    }
 
     exec(
         escapeshellarg($phpBinary) . ' ' . escapeshellarg($scriptPath) . ' 2>&1',
@@ -176,9 +162,8 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
     );
 
     return [
-        'ok'        => $code === 0,
-        'output'    => implode("\n", $out),
-        'exit_code' => $code,
+        'ok'     => $code === 0,
+        'output' => implode("\n", $out),
     ];
 }
 
@@ -187,19 +172,16 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
  * ======================= */
 function inv2_tail_file(string $path, int $maxLines = 120): array
 {
-    if (!file_exists($path) || !is_readable($path)) {
+    if (!file_exists($path)) {
         return [];
     }
-    $lines = @file($path, FILE_IGNORE_NEW_LINES);
-    return is_array($lines) ? array_slice($lines, -$maxLines) : [];
+    $lines = file($path, FILE_IGNORE_NEW_LINES);
+    return array_slice($lines, -$maxLines);
 }
 
 function inv2_extract_errors(array $lines): array
 {
-    return array_slice(
-        array_filter($lines, fn($l) => preg_match('/\b(error|fatal|exception|failed|missing)\b/i', $l)),
-        -40
-    );
+    return array_filter($lines, fn($l) => preg_match('/error|fatal|exception|failed/i', $l));
 }
 
 function inv2_render_log_panel(string $title, string $logPath): void
@@ -207,22 +189,31 @@ function inv2_render_log_panel(string $title, string $logPath): void
     $lines  = inv2_tail_file($logPath);
     $errors = inv2_extract_errors($lines);
 
-    echo '<div class="postbox">';
-    echo '<div class="postbox-header"><h2 class="hndle">' . esc_html($title) . '</h2></div>';
-    echo '<div class="inside">';
-    echo '<p><strong>Lokipolku:</strong> <code>' . esc_html($logPath) . '</code></p>';
+    echo '<div class="postbox"><div class="postbox-header"><h2>' . esc_html($title) . '</h2></div><div class="inside">';
+    echo '<p><code>' . esc_html($logPath) . '</code></p>';
 
-    echo '<p><strong>Virheet</strong></p>';
+    echo '<strong>Virheet</strong>';
     echo $errors
-        ? '<textarea readonly rows="6" class="large-text code">' . esc_textarea(implode("\n", $errors)) . '</textarea>'
+        ? '<textarea rows="6" class="large-text code">' . esc_textarea(implode("\n", $errors)) . '</textarea>'
         : '<p>Ei virheitä.</p>';
 
-    echo '<p><strong>Historia</strong></p>';
+    echo '<strong>Historia</strong>';
     echo $lines
-        ? '<textarea readonly rows="10" class="large-text code">' . esc_textarea(implode("\n", $lines)) . '</textarea>'
+        ? '<textarea rows="10" class="large-text code">' . esc_textarea(implode("\n", $lines)) . '</textarea>'
         : '<p>Ei lokeja.</p>';
-    echo '</div>';
-    echo '</div>';
+
+    echo '</div></div>';
+}
+
+function inv2_render_run_result(?array $runResult): void
+{
+    echo '<div class="postbox"><div class="postbox-header"><h2>Suorituksen loki</h2></div><div class="inside">';
+    if (!$runResult) {
+        echo '<p>Ei suorituksia tässä istunnossa.</p>';
+    } else {
+        echo '<textarea rows="10" class="large-text code">' . esc_textarea($runResult['output']) . '</textarea>';
+    }
+    echo '</div></div>';
 }
 
 /* =======================
@@ -230,13 +221,8 @@ function inv2_render_log_panel(string $title, string $logPath): void
  * ======================= */
 function inv2_render_admin_page(): void
 {
-    if (!current_user_can('manage_options')) {
-        wp_die('Ei oikeuksia');
-    }
-
     $settings = inv2_get_settings();
     $runResult = null;
-    $cleanupResult = null;
 
     if (isset($_POST['inv2_run_action'])) {
         check_admin_referer('inv2_run_cron_action');
@@ -248,71 +234,49 @@ function inv2_render_admin_page(): void
 
     if (isset($_POST['inv2_cleanup_action'])) {
         check_admin_referer('inv2_cleanup_logs_action');
-        $cleanupResult = inv2_clear_logs_now();
+        inv2_clear_logs_now();
     }
 
-    echo '<div class="wrap">';
-    echo '<h1>Inventory 2.0 Monitor</h1>';
-    echo '<p>Tällä sivulla voit hallita asetuksia, ajaa Cron B/C käsin sekä tarkastella ajohistoriaa ja virheitä.</p>';
-Feature
-    echo '<h2 class="title">Toiminnot</h2>';
-    echo '<div style="margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;">';
-    echo '<form method="post">';
-    wp_nonce_field('inv2_run_cron_action');
-    echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja Cron B nyt</button>';
-    echo '</form>';
-    echo '<form method="post">';
-    wp_nonce_field('inv2_run_cron_action');
-    echo '<button class="button button-primary" name="inv2_run_action" value="run_c">Aja Cron C nyt</button>';
-    echo '</form>';
-    echo '<form method="post">';
-    wp_nonce_field('inv2_cleanup_logs_action');
-    echo '<button class="button" name="inv2_cleanup_action" value="1">Tyhjennä lokit nyt</button>';
-Feature
-    echo '</form>';
+    echo '<div class="wrap"><h1>Inventory 2.0 Monitor</h1>';
 
-    echo '<hr style="margin:18px 0;">';
-    echo '<h2 class="title">Lokit</h2>';
-    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:16px;margin-top:12px;">';
+    inv2_render_run_result($runResult);
+
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
     inv2_render_log_panel('Cron B', $settings['cron_b_log']);
     inv2_render_log_panel('Cron C', $settings['cron_c_log']);
     echo '</div>';
 
-    echo '<hr style="margin:18px 0;">';
-    echo '<h2 class="title">Asetukset</h2>';
-    echo '<form method="post" action="options.php">';
-    settings_fields('inv2_monitor');
-    echo '<table class="form-table" role="presentation">';
-    echo '<tbody>';
-    echo '<tr><th scope="row"><label for="inv2_php_binary">PHP-binääri</label></th><td>';
-    echo '<input name="' . esc_attr(INV2_OPTION_KEY) . '[php_binary]" id="inv2_php_binary" type="text" class="regular-text code" value="' . esc_attr($settings['php_binary']) . '">';
-    echo '<p class="description">Esim. /usr/local/bin/php</p>';
-    echo '</td></tr>';
+    echo '<h2>Toiminnot</h2><div style="display:flex;gap:10px;">';
 
-    echo '<tr><th scope="row"><label for="inv2_cron_b_script">Cron B scriptipolku</label></th><td>';
-    echo '<input name="' . esc_attr(INV2_OPTION_KEY) . '[cron_b_script]" id="inv2_cron_b_script" type="text" class="regular-text code" value="' . esc_attr($settings['cron_b_script']) . '">';
-    echo '</td></tr>';
+    echo '<form method="post">';
+    wp_nonce_field('inv2_run_cron_action');
+    echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja Cron B nyt</button>';
+    echo '</form>';
 
-    echo '<tr><th scope="row"><label for="inv2_cron_c_script">Cron C scriptipolku</label></th><td>';
-    echo '<input name="' . esc_attr(INV2_OPTION_KEY) . '[cron_c_script]" id="inv2_cron_c_script" type="text" class="regular-text code" value="' . esc_attr($settings['cron_c_script']) . '">';
-    echo '</td></tr>';
+    echo '<form method="post">';
+    wp_nonce_field('inv2_run_cron_action');
+    echo '<button class="button button-primary" name="inv2_run_action" value="run_c">Aja Cron C nyt</button>';
+    echo '</form>';
 
-    echo '<tr><th scope="row"><label for="inv2_cron_b_log">Cron B loki</label></th><td>';
-    echo '<input name="' . esc_attr(INV2_OPTION_KEY) . '[cron_b_log]" id="inv2_cron_b_log" type="text" class="regular-text code" value="' . esc_attr($settings['cron_b_log']) . '">';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="inv2_cron_c_log">Cron C loki</label></th><td>';
-    echo '<input name="' . esc_attr(INV2_OPTION_KEY) . '[cron_c_log]" id="inv2_cron_c_log" type="text" class="regular-text code" value="' . esc_attr($settings['cron_c_log']) . '">';
-    echo '</td></tr>';
-
-    echo '<tr><th scope="row"><label for="inv2_log_retention_days">Lokien säilytys (päivää)</label></th><td>';
-    echo '<input name="' . esc_attr(INV2_OPTION_KEY) . '[log_retention_days]" id="inv2_log_retention_days" type="number" min="1" class="small-text" value="' . esc_attr((string) $settings['log_retention_days']) . '">';
-    echo '<p class="description">Tyhjennetään automaattisesti tämän välein.</p>';
-    echo '</td></tr>';
-    echo '</tbody>';
-    echo '</table>';
-    submit_button('Tallenna asetukset');
+    echo '<form method="post">';
+    wp_nonce_field('inv2_cleanup_logs_action');
+    echo '<button class="button" name="inv2_cleanup_action" value="1">Tyhjennä lokit nyt</button>';
     echo '</form>';
 
     echo '</div>';
+
+    echo '<h2>Asetukset</h2>';
+    echo '<form method="post" action="options.php">';
+    settings_fields('inv2_monitor');
+    echo '<table class="form-table"><tbody>';
+
+    foreach ($settings as $key => $value) {
+        echo '<tr><th>' . esc_html($key) . '</th><td>';
+        echo '<input class="regular-text code" name="' . INV2_OPTION_KEY . '[' . esc_attr($key) . ']" value="' . esc_attr($value) . '">';
+        echo '</td></tr>';
+    }
+
+    echo '</tbody></table>';
+    submit_button();
+    echo '</form></div>';
 }
