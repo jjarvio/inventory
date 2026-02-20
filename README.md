@@ -101,7 +101,7 @@ Ajetaan ajastetusti synkronoimaan inventaarion tila verkkokauppaan.
 
 #### Suodatus
 
-* Synkataan vain tuotteet, joiden supplier on `Myynnissä`
+
 
 #### Tuotteen elinkaari
 
@@ -167,7 +167,7 @@ SNIPE_API_TOKEN=xxxxxxxx
 
 # Yleiset
 LOG_PATH=/home/USER/cron/logs
-SALES_SUPPLIER_NAME=Myynnissä
+
 ```
 
 ⚠️ `.env` **ei kuulu versionhallintaan**.

@@ -48,6 +48,7 @@ add_action('admin_menu', function (): void {
 
 add_action('admin_init', function (): void {
     register_setting('inv2_monitor', INV2_OPTION_KEY);
+
     // Fallback: jos wp-cron ei laukea luotettavasti
     inv2_maybe_cleanup_logs();
 });
@@ -58,12 +59,12 @@ add_action('admin_init', function (): void {
 function inv2_default_settings(): array
 {
     return [
-        'php_binary' => '/usr/local/bin/php',
-        'cron_b_script' => '/home/USER/cron/cron_b_orders_to_snipe.php',
-        'cron_c_script' => '/home/USER/cron/cron_c_consumables_sync.php',
-        'cron_b_log' => '/home/USER/cron/logs/cron_b_orders.log',
-        'cron_c_log' => '/home/USER/cron/logs/cron_c_consumables.log',
-        'log_retention_days' => 7,
+        'php_binary'        => '/usr/local/bin/php',
+        'cron_b_script'     => '/home/USER/cron/cron_b_orders_to_snipe.php',
+        'cron_c_script'     => '/home/USER/cron/cron_c_consumables_sync.php',
+        'cron_b_log'        => '/home/USER/cron/logs/cron_b_orders.log',
+        'cron_c_log'        => '/home/USER/cron/logs/cron_c_consumables.log',
+        'log_retention_days'=> 7,
     ];
 }
 
@@ -71,8 +72,7 @@ function inv2_get_settings(): array
 {
     $saved = get_option(INV2_OPTION_KEY, []);
     $settings = wp_parse_args(is_array($saved) ? $saved : [], inv2_default_settings());
-
-    $settings['log_retention_days'] = max(1, (int) ($settings['log_retention_days'] ?? 7));
+    $settings['log_retention_days'] = max(1, (int) $settings['log_retention_days']);
     return $settings;
 }
 
@@ -107,7 +107,6 @@ function inv2_clear_logs_now(): array
 
     foreach (['cron_b_log', 'cron_c_log'] as $key) {
         $path = $settings[$key] ?? '';
-
         if (!is_string($path) || $path === '') {
             continue;
         }
@@ -129,9 +128,9 @@ function inv2_clear_logs_now(): array
     update_option(INV2_LAST_CLEANUP_OPTION_KEY, time(), false);
 
     return [
-        'ok' => empty($errors),
+        'ok'      => empty($errors),
         'cleared' => $cleared,
-        'errors' => $errors,
+        'errors'  => $errors,
     ];
 }
 
@@ -154,8 +153,8 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
     );
 
     return [
-        'ok' => $code === 0,
-        'output' => implode("\n", $out),
+        'ok'        => $code === 0,
+        'output'    => implode("\n", $out),
         'exit_code' => $code,
     ];
 }
@@ -182,7 +181,7 @@ function inv2_extract_errors(array $lines): array
 
 function inv2_render_log_panel(string $title, string $logPath): void
 {
-    $lines = inv2_tail_file($logPath);
+    $lines  = inv2_tail_file($logPath);
     $errors = inv2_extract_errors($lines);
 
     echo '<h2>' . esc_html($title) . '</h2>';
@@ -227,17 +226,25 @@ function inv2_render_admin_page(): void
 
     echo '<div class="wrap">';
     echo '<h1>Inventory 2.0 Monitor</h1>';
+    echo '<p>Tällä sivulla voit ajaa Cron B/C käsin sekä tarkastella ajohistoriaa ja virheitä.</p>';
 
-    echo '<div style="display:flex;gap:10px;margin:12px 0;">';
+    echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">';
+    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
+    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
+    echo '</div>';
+
+    echo '<div style="margin:16px 0;display:flex;gap:10px;flex-wrap:wrap;">';
     echo '<form method="post">';
     wp_nonce_field('inv2_run_cron_action');
-    echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja Cron B</button>';
-    echo '<button class="button" name="inv2_run_action" value="run_c">Aja Cron C</button>';
+    echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja Cron B nyt</button>';
     echo '</form>';
-
+    echo '<form method="post">';
+    wp_nonce_field('inv2_run_cron_action');
+    echo '<button class="button" name="inv2_run_action" value="run_c">Aja Cron C nyt</button>';
+    echo '</form>';
     echo '<form method="post">';
     wp_nonce_field('inv2_cleanup_logs_action');
-    echo '<button class="button button-secondary" name="inv2_cleanup_action" value="1">Tyhjennä lokit</button>';
+    echo '<button class="button button-secondary" name="inv2_cleanup_action" value="1">Tyhjennä lokit nyt</button>';
     echo '</form>';
     echo '</div>';
 
@@ -248,9 +255,5 @@ function inv2_render_admin_page(): void
         echo '<pre>' . esc_html(print_r($cleanupResult, true)) . '</pre>';
     }
 
-    echo '<hr />';
-    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
-    echo '<hr />';
-    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
     echo '</div>';
 }

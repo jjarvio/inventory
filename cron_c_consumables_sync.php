@@ -2,15 +2,12 @@
 /**
  * Cron C – Consumables → WooCommerce
  *
- * Ominaisuudet:
  * - Synkkaa vain consumables joiden supplier.name on SALES_SUPPLIER_NAME (case-insensitive)
- * - Woo-kategoria = Snipe-kategoria
- *   - jos Woo-kategoriaa ei ole → luo automaattisesti
- * - UUSI tuote: luodaan piilotettuna (private/hidden)
- * - Kun tuote on kerran publish (ihminen julkaissut) → muistetaan (_snipe_has_been_published=yes)
+ * - Woo-kategoria = Snipe-kategoria (luodaan jos puuttuu)
+ * - UUSI tuote: luodaan piilotettuna
  * - qty=0 → piilotetaan
- * - qty>0 + ollut aiemmin julkaistu → julkaistaan automaattisesti
- * - Tuotekuva siirtyy automaattisesti (Woo images src), vain jos tuotteella ei vielä ole kuvaa
+ * - qty>0 + ollut aiemmin publish → julkaistaan
+ * - Tuotekuva siirtyy automaattisesti jos Woo-tuotteella ei ole kuvaa
  */
 
 require __DIR__ . '/bootstrap.php';
@@ -98,7 +95,6 @@ function woo_auth(): string
 function supplier_is_for_sale(string $supplier): bool
 {
     global $SALES_SUPPLIER_NAME;
-
     return mb_strtolower(trim($supplier), 'UTF-8')
         === mb_strtolower(trim($SALES_SUPPLIER_NAME), 'UTF-8');
 }
@@ -121,39 +117,11 @@ function normalize_snipe_image_url(?string $imagePath): ?string
 function woo_get_product_by_sku(string $sku): ?array
 {
     global $WOO_BASE_URL;
-    $url = $WOO_BASE_URL . '/wp-json/wc/v3/products?' . woo_auth() . '&sku=' . urlencode($sku);
-    $res = http_request('GET', $url);
+    $res = http_request(
+        'GET',
+        $WOO_BASE_URL . '/wp-json/wc/v3/products?' . woo_auth() . '&sku=' . urlencode($sku)
+    );
     return $res['ok'] ? ($res['json'][0] ?? null) : null;
-}
-
-function woo_create_product(array $payload): void
-{
-    global $WOO_BASE_URL;
-    if (DRY_RUN) {
-        log_line("DRY_RUN CREATE {$payload['sku']}");
-        return;
-    }
-    http_request(
-        'POST',
-        $WOO_BASE_URL . '/wp-json/wc/v3/products?' . woo_auth(),
-        ['Content-Type: application/json'],
-        json_encode($payload)
-    );
-}
-
-function woo_update_product(int $id, array $payload): void
-{
-    global $WOO_BASE_URL;
-    if (DRY_RUN) {
-        log_line("DRY_RUN UPDATE id={$id}");
-        return;
-    }
-    http_request(
-        'PUT',
-        $WOO_BASE_URL . "/wp-json/wc/v3/products/{$id}?" . woo_auth(),
-        ['Content-Type: application/json'],
-        json_encode($payload)
-    );
 }
 
 function woo_get_or_create_category(string $name): ?array
@@ -187,9 +155,35 @@ function woo_get_or_create_category(string $name): ?array
     return $create['ok'] ? $create['json'] : null;
 }
 
+function woo_create_product(array $payload): void
+{
+    global $WOO_BASE_URL;
+    if (!DRY_RUN) {
+        http_request(
+            'POST',
+            $WOO_BASE_URL . '/wp-json/wc/v3/products?' . woo_auth(),
+            ['Content-Type: application/json'],
+            json_encode($payload)
+        );
+    }
+}
+
+function woo_update_product(int $id, array $payload): void
+{
+    global $WOO_BASE_URL;
+    if (!DRY_RUN) {
+        http_request(
+            'PUT',
+            $WOO_BASE_URL . "/wp-json/wc/v3/products/{$id}?" . woo_auth(),
+            ['Content-Type: application/json'],
+            json_encode($payload)
+        );
+    }
+}
+
 /* ---------- run ---------- */
 
-log_line("=== Cron C Consumables START ===");
+log_line('=== Cron C Consumables START ===');
 debugMsg("SALES_SUPPLIER_NAME={$SALES_SUPPLIER_NAME}");
 
 $offset = 0;
@@ -222,8 +216,8 @@ while (true) {
             continue;
         }
 
-        $isForSale = supplier_is_for_sale($supplier);
         $woo = woo_get_product_by_sku($sku);
+        $isForSale = supplier_is_for_sale($supplier);
 
         if (!$isForSale) {
             if ($woo) {
@@ -287,4 +281,4 @@ while (true) {
     }
 }
 
-log_line("=== Cron C Consumables END ===");
+log_line('=== Cron C Consumables END ===');
