@@ -19,7 +19,7 @@ Ratkaisu on suunniteltu *production-käyttöön*: automaatio ei koskaan julkaise
   * Uusia tuotteita ei koskaan julkaista automaattisesti
   * Ihminen hyväksyy tuotteen kerran, automaatio hoitaa jatkon
 * 📦 **Consumables- ja Components-tuki**
-* 🧠 **Kategoriapohjainen hallinta** (`-myynnissä`-pääte)
+* 🧠 **Supplier-pohjainen hallinta** (`supplier.name = Myynnissä`)
 * 🧾 **Idempotentit cron-ajot** (ei kaksoiskäsittelyä)
 * 🪵 **Lokitus virheiden selvitykseen ja auditointiin**
 
@@ -38,6 +38,18 @@ WooCommerce ──(tilaukset)──▶ Cron B ──▶ Snipe-IT
 * **Cron C**: Snipe-IT → WooCommerce (inventaario synkataan kauppaan)
 
 Kaikki liikenne kulkee REST API -rajapintojen kautta API-avaimilla.
+
+### Miksi WordPress-pluginin käyttöliittymä ei toimi tämän kanssa?
+
+Tämä projekti **ei ole WordPress-plugin** eikä sisällä WP Adminiin renderöitävää käyttöliittymää.
+Se on itsenäinen cron-ajettava integraatio, joka:
+
+* suoritetaan vain CLI:stä (`php_sapi_name() !== 'cli'` estää web-ajon)
+* käyttää WooCommercen REST APIa suoraan
+* kirjoittaa lokit tiedostoihin eikä näytä näkymää WP-hallinnassa
+
+Jos tämä koodi kopioidaan pluginiksi tai ajetaan selaimen kautta, tuloksena on 403/tyhjä vaste,
+koska toteutus on tarkoituksella rajattu komentoriviajolle.
 
 ---
 
@@ -89,7 +101,7 @@ Ajetaan ajastetusti synkronoimaan inventaarion tila verkkokauppaan.
 
 #### Suodatus
 
-* Synkataan vain kategoriat, joiden nimi päättyy `-myynnissä`
+* Synkataan vain tuotteet, joiden supplier on `Myynnissä` (env: `SALE_SUPPLIER_NAME`)
 
 #### Tuotteen elinkaari
 
@@ -155,6 +167,7 @@ SNIPE_API_TOKEN=xxxxxxxx
 
 # Yleiset
 LOG_PATH=/home/USER/cron/logs
+SALE_SUPPLIER_NAME=Myynnissä
 ```
 
 ⚠️ `.env` **ei kuulu versionhallintaan**.
@@ -242,3 +255,47 @@ Suunnitteilla:
 
 **jjarvio**
 Inventory 2.0
+
+---
+
+## WordPress-plugin UI monitorointiin (cron-historia + virheet + manuaaliajot)
+
+Repositorioon on lisätty esimerkkiplugin: `wp-plugin/inventory2-monitor/inventory2-monitor.php`.
+
+### Mitä plugin tekee
+
+* Lisää WP Adminiin sivun **Inventory 2.0**
+* Näyttää kahden lokin (Cron B/C) viimeisimmät rivit (= ajohistoria)
+* Poimii lokista virherivit (hakusanat kuten `error`, `fatal`, `exception`, `failed`, `missing`)
+* Tarjoaa painikkeet:
+  * **Aja Cron B nyt**
+  * **Aja Cron C nyt**
+  * **Tyhjennä lokit nyt**
+* Ajaa cronin CLI:n kautta (`php script.php`) ja näyttää ajon outputin heti käyttöliittymässä
+* Tyhjentää Cron B/C -lokit automaattisesti asetettavan välin mukaan (oletus 7 päivää)
+* Näyttää Cron B ja Cron C -historiat vierekkäin näkymän yläosassa
+
+### Asennus
+
+1. Kopioi plugin-kansio WordPressiin:
+
+   ```
+   wp-plugin/inventory2-monitor -> wp-content/plugins/inventory2-monitor
+   ```
+
+2. Aktivoi plugin WP Adminissa.
+3. Avaa **Inventory 2.0** -sivu.
+4. Täytä asetuksiin oikeat polut:
+
+   * PHP-binääri (esim. `/usr/local/bin/php`)
+   * Cron B scripti
+   * Cron C scripti
+   * Cron B loki
+   * Cron C loki
+   * Lokien tyhjennysväli päivinä (esim. `7`)
+
+### Suositus tuotantoon
+
+* Pidä cron-ajot edelleen palvelimen oikealla cron-ajastuksella (cPanel/cron).
+* Käytä pluginin manuaaliajoa vain debugiin / operointiin.
+* Rajaa sivu vain `manage_options`-oikeudella oleville käyttäjille (plugin tekee tämän valmiiksi).
