@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Inventory 2.0 Monitor
  * Description: Näyttää Inventory 2.0 cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Inventory 2.0
  */
 
@@ -11,6 +11,23 @@ if (!defined('ABSPATH')) {
 }
 
 const INV2_OPTION_KEY = 'inv2_monitor_settings';
+const INV2_LAST_CLEANUP_OPTION_KEY = 'inv2_monitor_last_cleanup_ts';
+const INV2_CLEANUP_HOOK = 'inv2_monitor_daily_cleanup';
+
+register_activation_hook(__FILE__, function (): void {
+    if (!wp_next_scheduled(INV2_CLEANUP_HOOK)) {
+        wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', INV2_CLEANUP_HOOK);
+    }
+});
+
+register_deactivation_hook(__FILE__, function (): void {
+    $timestamp = wp_next_scheduled(INV2_CLEANUP_HOOK);
+    if ($timestamp) {
+        wp_unschedule_event($timestamp, INV2_CLEANUP_HOOK);
+    }
+});
+
+add_action(INV2_CLEANUP_HOOK, 'inv2_maybe_cleanup_logs');
 
 add_action('admin_menu', function (): void {
     add_menu_page(
@@ -26,6 +43,8 @@ add_action('admin_menu', function (): void {
 
 add_action('admin_init', function (): void {
     register_setting('inv2_monitor', INV2_OPTION_KEY);
+    // Varmistus: jos wp-cron ei laukea luotettavasti, siivotaan silti harvakseltaan adminissa.
+    inv2_maybe_cleanup_logs();
 });
 
 function inv2_default_settings(): array
@@ -36,14 +55,50 @@ function inv2_default_settings(): array
         'cron_c_script' => '/home/USER/cron/cron_c_consumables_sync.php',
         'cron_b_log' => '/home/USER/cron/logs/cron_b_orders.log',
         'cron_c_log' => '/home/USER/cron/logs/cron_c_consumables.log',
+        'log_retention_days' => 7,
     ];
 }
 
 function inv2_get_settings(): array
 {
     $saved = get_option(INV2_OPTION_KEY, []);
+    $settings = wp_parse_args(is_array($saved) ? $saved : [], inv2_default_settings());
 
-    return wp_parse_args(is_array($saved) ? $saved : [], inv2_default_settings());
+    // Varmista järkevä arvo
+    $settings['log_retention_days'] = max(1, (int) ($settings['log_retention_days'] ?? 7));
+
+    return $settings;
+}
+
+function inv2_maybe_cleanup_logs(): void
+{
+    $settings = inv2_get_settings();
+    $retentionDays = max(1, (int) ($settings['log_retention_days'] ?? 7));
+    $threshold = $retentionDays * DAY_IN_SECONDS;
+    $now = time();
+
+    $lastCleanup = (int) get_option(INV2_LAST_CLEANUP_OPTION_KEY, 0);
+    if (($now - $lastCleanup) < $threshold) {
+        return;
+    }
+
+    $logFiles = [
+        $settings['cron_b_log'] ?? '',
+        $settings['cron_c_log'] ?? '',
+    ];
+
+    foreach ($logFiles as $path) {
+        if (!is_string($path) || $path === '') {
+            continue;
+        }
+
+        if (file_exists($path) && is_writable($path)) {
+            // Tyhjennä tiedosto (ei poisteta koko fileä)
+            file_put_contents($path, '');
+        }
+    }
+
+    update_option(INV2_LAST_CLEANUP_OPTION_KEY, $now, false);
 }
 
 function inv2_run_script(string $scriptPath, string $phpBinary): array
@@ -171,13 +226,14 @@ function inv2_render_admin_page(): void
         'cron_c_script' => 'Cron C scriptin polku',
         'cron_b_log' => 'Cron B loki',
         'cron_c_log' => 'Cron C loki',
+        'log_retention_days' => 'Lokien tyhjennysväli (päivää)',
     ];
 
     echo '<table class="form-table"><tbody>';
     foreach ($fields as $key => $label) {
         echo '<tr>';
         echo '<th scope="row"><label for="' . esc_attr($key) . '">' . esc_html($label) . '</label></th>';
-        echo '<td><input name="' . esc_attr(INV2_OPTION_KEY . '[' . $key . ']') . '" id="' . esc_attr($key) . '" type="text" class="regular-text code" value="' . esc_attr($settings[$key] ?? '') . '" /></td>';
+        echo '<td><input name="' . esc_attr(INV2_OPTION_KEY . '[' . $key . ']') . '" id="' . esc_attr($key) . '" type="text" class="regular-text code" value="' . esc_attr((string) ($settings[$key] ?? '')) . '" /></td>';
         echo '</tr>';
     }
     echo '</tbody></table>';
@@ -185,9 +241,11 @@ function inv2_render_admin_page(): void
     submit_button('Tallenna asetukset');
     echo '</form>';
 
+    echo '<p><em>Lokit tyhjennetään automaattisesti asetetun päivän välein (oletus 7).</em></p>';
+
     echo '<hr />';
-    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
+    inv2_render_log_panel('Cron B', (string) ($settings['cron_b_log'] ?? ''));
     echo '<hr />';
-    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
+    inv2_render_log_panel('Cron C', (string) ($settings['cron_c_log'] ?? ''));
     echo '</div>';
 }
