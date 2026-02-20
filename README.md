@@ -19,7 +19,7 @@ Ratkaisu on suunniteltu *production-käyttöön*: automaatio ei koskaan julkaise
   * Uusia tuotteita ei koskaan julkaista automaattisesti
   * Ihminen hyväksyy tuotteen kerran, automaatio hoitaa jatkon
 * 📦 **Consumables- ja Components-tuki**
-* 🧠 **Kategoriapohjainen hallinta** (`-myynnissä`-pääte)
+* 🧠 **Supplier-pohjainen hallinta** (`supplier.name = Myynnissä`)
 * 🧾 **Idempotentit cron-ajot** (ei kaksoiskäsittelyä)
 * 🪵 **Lokitus virheiden selvitykseen ja auditointiin**
 
@@ -101,7 +101,7 @@ Ajetaan ajastetusti synkronoimaan inventaarion tila verkkokauppaan.
 
 #### Suodatus
 
-* Synkataan vain kategoriat, joiden nimi päättyy `-myynnissä`
+* Synkataan vain tuotteet, joiden supplier on `Myynnissä`
 
 #### Tuotteen elinkaari
 
@@ -167,6 +167,7 @@ SNIPE_API_TOKEN=xxxxxxxx
 
 # Yleiset
 LOG_PATH=/home/USER/cron/logs
+SALES_SUPPLIER_NAME=Myynnissä
 ```
 
 ⚠️ `.env` **ei kuulu versionhallintaan**.
@@ -293,4 +294,3 @@ Repositorioon on lisätty esimerkkiplugin: `wp-plugin/inventory2-monitor/invento
 * Pidä cron-ajot edelleen palvelimen oikealla cron-ajastuksella (cPanel/cron).
 * Käytä pluginin manuaaliajoa vain debugiin / operointiin.
 * Rajaa sivu vain `manage_options`-oikeudella oleville käyttäjille (plugin tekee tämän valmiiksi).
-

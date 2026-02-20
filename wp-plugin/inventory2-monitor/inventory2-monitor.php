@@ -14,6 +14,9 @@ const INV2_OPTION_KEY = 'inv2_monitor_settings';
 const INV2_LAST_CLEANUP_OPTION_KEY = 'inv2_monitor_last_cleanup_ts';
 const INV2_CLEANUP_HOOK = 'inv2_monitor_daily_cleanup';
 
+/* =======================
+ * Activation / Deactivation
+ * ======================= */
 register_activation_hook(__FILE__, function (): void {
     if (!wp_next_scheduled(INV2_CLEANUP_HOOK)) {
         wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', INV2_CLEANUP_HOOK);
@@ -21,14 +24,16 @@ register_activation_hook(__FILE__, function (): void {
 });
 
 register_deactivation_hook(__FILE__, function (): void {
-    $timestamp = wp_next_scheduled(INV2_CLEANUP_HOOK);
-    if ($timestamp) {
-        wp_unschedule_event($timestamp, INV2_CLEANUP_HOOK);
+    if ($ts = wp_next_scheduled(INV2_CLEANUP_HOOK)) {
+        wp_unschedule_event($ts, INV2_CLEANUP_HOOK);
     }
 });
 
 add_action(INV2_CLEANUP_HOOK, 'inv2_maybe_cleanup_logs');
 
+/* =======================
+ * Admin
+ * ======================= */
 add_action('admin_menu', function (): void {
     add_menu_page(
         'Inventory 2.0 Monitor',
@@ -43,10 +48,13 @@ add_action('admin_menu', function (): void {
 
 add_action('admin_init', function (): void {
     register_setting('inv2_monitor', INV2_OPTION_KEY);
-    // Varmistus: jos wp-cron ei laukea, siivotaan adminissa harvakseltaan
+    // Fallback: jos wp-cron ei laukea luotettavasti
     inv2_maybe_cleanup_logs();
 });
 
+/* =======================
+ * Settings
+ * ======================= */
 function inv2_default_settings(): array
 {
     return [
@@ -64,12 +72,13 @@ function inv2_get_settings(): array
     $saved = get_option(INV2_OPTION_KEY, []);
     $settings = wp_parse_args(is_array($saved) ? $saved : [], inv2_default_settings());
 
-    // Varmista järkevä arvo
     $settings['log_retention_days'] = max(1, (int) ($settings['log_retention_days'] ?? 7));
-
     return $settings;
 }
 
+/* =======================
+ * Log cleanup
+ * ======================= */
 function inv2_maybe_cleanup_logs(): void
 {
     $settings = inv2_get_settings();
@@ -126,6 +135,9 @@ function inv2_clear_logs_now(): array
     ];
 }
 
+/* =======================
+ * Cron runner
+ * ======================= */
 function inv2_run_script(string $scriptPath, string $phpBinary): array
 {
     if (!file_exists($scriptPath)) {
@@ -135,7 +147,11 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
         return ['ok' => false, 'output' => 'PHP-binääri ei ole ajettava: ' . $phpBinary];
     }
 
-    exec(escapeshellarg($phpBinary) . ' ' . escapeshellarg($scriptPath) . ' 2>&1', $out, $code);
+    exec(
+        escapeshellarg($phpBinary) . ' ' . escapeshellarg($scriptPath) . ' 2>&1',
+        $out,
+        $code
+    );
 
     return [
         'ok' => $code === 0,
@@ -144,6 +160,48 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
     ];
 }
 
+/* =======================
+ * UI helpers
+ * ======================= */
+function inv2_tail_file(string $path, int $maxLines = 120): array
+{
+    if (!file_exists($path) || !is_readable($path)) {
+        return [];
+    }
+    $lines = @file($path, FILE_IGNORE_NEW_LINES);
+    return is_array($lines) ? array_slice($lines, -$maxLines) : [];
+}
+
+function inv2_extract_errors(array $lines): array
+{
+    return array_slice(
+        array_filter($lines, fn($l) => preg_match('/\b(error|fatal|exception|failed|missing)\b/i', $l)),
+        -40
+    );
+}
+
+function inv2_render_log_panel(string $title, string $logPath): void
+{
+    $lines = inv2_tail_file($logPath);
+    $errors = inv2_extract_errors($lines);
+
+    echo '<h2>' . esc_html($title) . '</h2>';
+    echo '<p><code>' . esc_html($logPath) . '</code></p>';
+
+    echo '<h3>Virheet</h3>';
+    echo $errors
+        ? '<textarea readonly rows="6" style="width:100%;font-family:monospace;">' . esc_textarea(implode("\n", $errors)) . '</textarea>'
+        : '<p>Ei virheitä.</p>';
+
+    echo '<h3>Historia</h3>';
+    echo $lines
+        ? '<textarea readonly rows="10" style="width:100%;font-family:monospace;">' . esc_textarea(implode("\n", $lines)) . '</textarea>'
+        : '<p>Ei lokeja.</p>';
+}
+
+/* =======================
+ * Admin page
+ * ======================= */
 function inv2_render_admin_page(): void
 {
     if (!current_user_can('manage_options')) {
@@ -170,7 +228,8 @@ function inv2_render_admin_page(): void
     echo '<div class="wrap">';
     echo '<h1>Inventory 2.0 Monitor</h1>';
 
-    echo '<form method="post" style="display:flex;gap:10px;margin-bottom:16px;">';
+    echo '<div style="display:flex;gap:10px;margin:12px 0;">';
+    echo '<form method="post">';
     wp_nonce_field('inv2_run_cron_action');
     echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja Cron B</button>';
     echo '<button class="button" name="inv2_run_action" value="run_c">Aja Cron C</button>';
@@ -178,8 +237,9 @@ function inv2_render_admin_page(): void
 
     echo '<form method="post">';
     wp_nonce_field('inv2_cleanup_logs_action');
-    echo '<button class="button button-secondary" name="inv2_cleanup_action" value="1">Tyhjennä lokit nyt</button>';
+    echo '<button class="button button-secondary" name="inv2_cleanup_action" value="1">Tyhjennä lokit</button>';
     echo '</form>';
+    echo '</div>';
 
     if ($runResult) {
         echo '<pre>' . esc_html($runResult['output']) . '</pre>';
@@ -188,5 +248,9 @@ function inv2_render_admin_page(): void
         echo '<pre>' . esc_html(print_r($cleanupResult, true)) . '</pre>';
     }
 
+    echo '<hr />';
+    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
+    echo '<hr />';
+    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
     echo '</div>';
 }
