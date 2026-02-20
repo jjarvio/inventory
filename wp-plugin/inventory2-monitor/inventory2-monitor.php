@@ -254,7 +254,7 @@ function inv2_render_admin_page(): void
     echo '<div class="wrap">';
     echo '<h1>Inventory 2.0 Monitor</h1>';
     echo '<p>Tällä sivulla voit hallita asetuksia, ajaa Cron B/C käsin sekä tarkastella ajohistoriaa ja virheitä.</p>';
-
+Feature
     echo '<h2 class="title">Toiminnot</h2>';
     echo '<div style="margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;">';
     echo '<form method="post">';
@@ -268,7 +268,14 @@ function inv2_render_admin_page(): void
     echo '<form method="post">';
     wp_nonce_field('inv2_cleanup_logs_action');
     echo '<button class="button" name="inv2_cleanup_action" value="1">Tyhjennä lokit nyt</button>';
+Feature
     echo '</form>';
+
+    echo '<hr style="margin:18px 0;">';
+    echo '<h2 class="title">Lokit</h2>';
+    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:16px;margin-top:12px;">';
+    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
+    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
     echo '</div>';
 
     echo '<hr style="margin:18px 0;">';
@@ -306,20 +313,6 @@ function inv2_render_admin_page(): void
     echo '</table>';
     submit_button('Tallenna asetukset');
     echo '</form>';
-
-    echo '<hr style="margin:18px 0;">';
-    echo '<h2 class="title">Lokit</h2>';
-    echo '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(360px, 1fr));gap:16px;margin-top:12px;">';
-    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
-    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
-    echo '</div>';
-
-    if ($runResult) {
-        echo '<pre>' . esc_html($runResult['output']) . '</pre>';
-    }
-    if ($cleanupResult) {
-        echo '<pre>' . esc_html(print_r($cleanupResult, true)) . '</pre>';
-    }
 
     echo '</div>';
 }
