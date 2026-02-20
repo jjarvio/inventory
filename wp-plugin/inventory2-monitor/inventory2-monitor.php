@@ -43,6 +43,7 @@ add_action('admin_menu', function (): void {
 
 add_action('admin_init', function (): void {
     register_setting('inv2_monitor', INV2_OPTION_KEY);
+    // Varmistus: jos wp-cron ei laukea luotettavasti, siivotaan silti harvakseltaan adminissa.
     inv2_maybe_cleanup_logs();
 });
 
@@ -63,6 +64,7 @@ function inv2_get_settings(): array
     $saved = get_option(INV2_OPTION_KEY, []);
     $settings = wp_parse_args(is_array($saved) ? $saved : [], inv2_default_settings());
 
+    // Varmista järkevä arvo
     $settings['log_retention_days'] = max(1, (int) ($settings['log_retention_days'] ?? 7));
 
     return $settings;
@@ -91,6 +93,7 @@ function inv2_maybe_cleanup_logs(): void
         }
 
         if (file_exists($path) && is_writable($path)) {
+            // Tyhjennä tiedosto (ei poisteta koko fileä)
             file_put_contents($path, '');
         }
     }
@@ -241,8 +244,8 @@ function inv2_render_admin_page(): void
     echo '<p><em>Lokit tyhjennetään automaattisesti asetetun päivän välein (oletus 7).</em></p>';
 
     echo '<hr />';
-    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
+    inv2_render_log_panel('Cron B', (string) ($settings['cron_b_log'] ?? ''));
     echo '<hr />';
-    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
+    inv2_render_log_panel('Cron C', (string) ($settings['cron_c_log'] ?? ''));
     echo '</div>';
 }

@@ -270,7 +270,9 @@ Repositorioon on lisätty esimerkkiplugin: `wp-plugin/inventory2-monitor/invento
   * **Aja Cron B nyt**
   * **Aja Cron C nyt**
 * Ajaa cronin CLI:n kautta (`php script.php`) ja näyttää ajon outputin heti käyttöliittymässä
+
 * Tyhjentää Cron B/C -lokit automaattisesti asetettavan välin mukaan (oletus 7 päivää)
+
 
 ### Asennus
 
@@ -289,7 +291,9 @@ Repositorioon on lisätty esimerkkiplugin: `wp-plugin/inventory2-monitor/invento
    * Cron C scripti
    * Cron B loki
    * Cron C loki
+
    * Lokien tyhjennysväli päivinä (esim. `7`)
+
 
 ### Suositus tuotantoon
 
