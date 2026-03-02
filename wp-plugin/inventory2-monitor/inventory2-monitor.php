@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Inventory 2.0 Monitor
- * Description: Näyttää Inventory 2.0 cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
+ * Plugin Name: Inventory Monitor
+ * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
  * Version: 0.3.1
- * Author: Inventory 2.0
+ * Author: jjarvio
  */
 
 if (!defined('ABSPATH')) {
@@ -14,9 +14,9 @@ const INV2_OPTION_KEY = 'inv2_monitor_settings';
 const INV2_LAST_CLEANUP_OPTION_KEY = 'inv2_monitor_last_cleanup_ts';
 const INV2_CLEANUP_HOOK = 'inv2_monitor_daily_cleanup';
 
-/* =======================
- * Activation / Deactivation
- * ======================= */
+
+ *//Activation / Deactivation
+ 
 register_activation_hook(__FILE__, function (): void {
     if (!wp_next_scheduled(INV2_CLEANUP_HOOK)) {
         wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', INV2_CLEANUP_HOOK);
@@ -31,9 +31,9 @@ register_deactivation_hook(__FILE__, function (): void {
 
 add_action(INV2_CLEANUP_HOOK, 'inv2_maybe_cleanup_logs');
 
-/* =======================
- * Admin
- * ======================= */
+
+ *// Admin
+ 
 add_action('admin_menu', function (): void {
     add_menu_page(
         'Inventory 2.0 Monitor',
@@ -60,9 +60,9 @@ add_action('admin_init', function (): void {
     inv2_maybe_cleanup_logs();
 });
 
-/* =======================
- * Settings
- * ======================= */
+
+ *// Settings
+ 
 function inv2_default_settings(): array
 {
     return [
@@ -98,9 +98,9 @@ function inv2_sanitize_settings($input): array
     ];
 }
 
-/* =======================
- * Log cleanup
- * ======================= */
+
+ *// Log cleanup
+ 
 function inv2_maybe_cleanup_logs(): void
 {
     $settings = inv2_get_settings();
@@ -146,9 +146,9 @@ function inv2_clear_logs_now(): array
     return ['ok' => empty($errors), 'cleared' => $cleared, 'errors' => $errors];
 }
 
-/* =======================
- * Cron runner
- * ======================= */
+
+ *// Cron runner
+
 function inv2_run_script(string $scriptPath, string $phpBinary): array
 {
     if (!file_exists($scriptPath)) {
@@ -167,9 +167,9 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
     ];
 }
 
-/* =======================
- * UI helpers
- * ======================= */
+
+ *// UI helpers
+ 
 function inv2_tail_file(string $path, int $maxLines = 120): array
 {
     if (!file_exists($path)) {
@@ -216,9 +216,9 @@ function inv2_render_run_result(?array $runResult): void
     echo '</div></div>';
 }
 
-/* =======================
- * Admin page
- * ======================= */
+
+ *// Admin page
+ 
 function inv2_render_admin_page(): void
 {
     $settings = inv2_get_settings();
