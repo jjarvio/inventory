@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Inventory Monitor
+ * Plugin Name: Inventory 2.0 Monitor
  * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
  * Version: 0.3.1
  * Author: jjarvio
@@ -15,7 +15,7 @@ const INV2_LAST_CLEANUP_OPTION_KEY = 'inv2_monitor_last_cleanup_ts';
 const INV2_CLEANUP_HOOK = 'inv2_monitor_daily_cleanup';
 
 
- *//Activation / Deactivation
+//Activation / Deactivation
  
 register_activation_hook(__FILE__, function (): void {
     if (!wp_next_scheduled(INV2_CLEANUP_HOOK)) {
@@ -32,7 +32,7 @@ register_deactivation_hook(__FILE__, function (): void {
 add_action(INV2_CLEANUP_HOOK, 'inv2_maybe_cleanup_logs');
 
 
- *// Admin
+// Admin
  
 add_action('admin_menu', function (): void {
     add_menu_page(
@@ -61,7 +61,7 @@ add_action('admin_init', function (): void {
 });
 
 
- *// Settings
+ // Settings
  
 function inv2_default_settings(): array
 {
@@ -99,7 +99,7 @@ function inv2_sanitize_settings($input): array
 }
 
 
- *// Log cleanup
+ // Log cleanup
  
 function inv2_maybe_cleanup_logs(): void
 {
@@ -147,7 +147,7 @@ function inv2_clear_logs_now(): array
 }
 
 
- *// Cron runner
+ // Cron runner
 
 function inv2_run_script(string $scriptPath, string $phpBinary): array
 {
@@ -168,7 +168,7 @@ function inv2_run_script(string $scriptPath, string $phpBinary): array
 }
 
 
- *// UI helpers
+ // UI helpers
  
 function inv2_tail_file(string $path, int $maxLines = 120): array
 {
@@ -217,7 +217,7 @@ function inv2_render_run_result(?array $runResult): void
 }
 
 
- *// Admin page
+ // Admin page
  
 function inv2_render_admin_page(): void
 {
