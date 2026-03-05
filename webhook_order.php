@@ -7,9 +7,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
 
-// -----------------------------------------------------------------------------
+
 // Helpers
-// -----------------------------------------------------------------------------
 function respond(int $status, string $message): void {
     http_response_code($status);
     header('Content-Type: application/json');
@@ -28,9 +27,9 @@ function log_webhook(string $message, array $context = []): void {
     ]) . PHP_EOL, FILE_APPEND);
 }
 
-// -----------------------------------------------------------------------------
+
 // Security
-// -----------------------------------------------------------------------------
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     respond(405, 'Method Not Allowed');
 }
@@ -43,9 +42,8 @@ if (!$expected || !hash_equals($expected, $provided)) {
     respond(401, 'Unauthorized');
 }
 
-// -----------------------------------------------------------------------------
+
 // Payload
-// -----------------------------------------------------------------------------
 $data = json_decode(file_get_contents('php://input'), true);
 $orderId = $data['id'] ?? null;
 
@@ -53,9 +51,7 @@ if (!$orderId || !is_numeric($orderId)) {
     respond(400, 'Invalid order id');
 }
 
-// -----------------------------------------------------------------------------
 // Queue
-// -----------------------------------------------------------------------------
 $queueDir = rtrim(getenv('WEBHOOK_QUEUE_PATH'), '/');
 $file = $queueDir . '/order_' . (int)$orderId . '.json';
 
