@@ -281,7 +281,7 @@ function snipe_get_consumables(int $offset, int $limit): array {
 
 log_line("=== Cron C Consumables START ===");
 
-$activeSnipeIds = []; // <-- UUSI
+$activeSnipeIds = [];
 
 $offset = 0;
 $limit  = 100;
@@ -304,7 +304,7 @@ while (true) {
     foreach ($rows as $c) {
 
         $id       = (int)$c['id'];
-        $activeSnipeIds[] = $id; 
+        $activeSnipeIds[] = $id;
         $name     = (string)$c['name'];
         $price    = (string)($c['purchase_cost'] ?? '0');
         $qty      = (int)($c['remaining'] ?? 0);
@@ -342,21 +342,17 @@ while (true) {
         $hasBeenPublished = false;
 
         if ($woo) {
-            // jos meta kertoo että on ollut julkaistu
             if (woo_has_been_published_from_meta($woo)) {
                 $hasBeenPublished = true;
             }
 
-            // jos ihminen on joskus julkaissut (status publish milloin tahansa)
             if (($woo['status'] ?? '') === 'publish') {
                 $hasBeenPublished = true;
             }
-}
-
+        }
 
         $visible = ($qty > 0) && $hasBeenPublished;
 
-        // Jos tuote on publish nyt, lukitse muisti pysyvästi
         if ($woo && ($woo['status'] ?? '') === 'publish') {
             $hasBeenPublished = true;
         }
@@ -401,4 +397,3 @@ while (true) {
 hide_products_not_in_active_list($activeSnipeIds);
 
 log_line("=== Cron C Consumables END ===");
-

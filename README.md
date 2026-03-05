@@ -1,229 +1,179 @@
 # Inventory 2.0
 
-**Snipe-IT ↔ WooCommerce -integraatio**
+**Snipe-IT ↔ WooCommerce -integraatio cron-ajona**
 
-Inventory 2.0 on PHP-pohjainen integraatio, joka synkronoi **Snipe-IT**-inventaariojärjestelmän ja **WooCommerce**-verkkokaupan varastosaldot ja tuotteiden näkyvyyden hallitusti ja turvallisesti.
+Inventory 2.0 on PHP-pohjainen integraatio, joka synkronoi Snipe-IT:n ja
+WooCommercen dataa turvallisesti cron-ajojen kautta.
 
-Ratkaisu on suunniteltu *production-käyttöön*: automaatio ei koskaan julkaise keskeneräisiä tuotteita, kaikki muutokset ovat jäljitettävissä, ja synkronointi tapahtuu idempotenteilla cron-ajolla virallisten REST API -rajapintojen kautta.
+-   **Cron B**: WooCommerce-tilaukset → vähennetään Snipe-IT-varastoa\
+-   **Cron C**: Snipe-IT consumables → päivitetään WooCommerce-tuotteet
 
----
+------------------------------------------------------------------------
 
-## Keskeiset ominaisuudet
+## Mitä tämä projekti on (ja ei ole)
 
-* 🔁 **Kaksisuuntainen synkronointi**
+-   Tämä repo on ensisijaisesti **CLI-ajoihin tarkoitettu
+    cron-integraatio**
+-   Skriptit on suojattu web-ajolta (`php_sapi_name() !== 'cli'`)
+-   Repossa on lisäksi **erillinen WP Admin -monitorointiplugin**
+    (`wp-plugin/inventory2-monitor`), jolla voi:
+    -   katsoa lokihistoriaa
+    -   ajaa Cron B/C käsin
+    -   tyhjentää lokit
 
-  * WooCommerce-tilaukset vähentävät varastosaldoa Snipe-IT:ssä
-  * Snipe-IT:n inventaario päivittää WooCommercen
-* 🛑 **Turvallinen julkaisumalli (safe-by-design)**
-
-  * Uusia tuotteita ei koskaan julkaista automaattisesti
-  * Ihminen hyväksyy tuotteen kerran, automaatio hoitaa jatkon
-* 📦 **Consumables-tuki**
-* 🧠 **Kategoriapohjainen hallinta** (`-myynnissä`-pääte)
-* 🧾 **Idempotentit cron-ajot** (ei kaksoiskäsittelyä)
-* 🪵 **Lokitus virheiden selvitykseen ja auditointiin**
-
----
-
-## Arkkitehtuuri (yleiskuva)
-
-```
-WooCommerce ──(tilaukset)──▶ Cron B ──▶ Snipe-IT
-     ▲                                   │
-     │                                   ▼
-     └──────────── Cron C ◀──── inventaario
-```
-
-* **Cron B**: WooCommerce → Snipe-IT (tilaukset vähentävät saldoa)
-* **Cron C**: Snipe-IT → WooCommerce (inventaario synkataan kauppaan)
-
-Kaikki liikenne kulkee REST API -rajapintojen kautta API-avaimilla.
-
----
+------------------------------------------------------------------------
 
 ## Repositorion rakenne
 
-Versionhallintaan kuuluu vain varsinainen synkronointilogiikka. Salaisuudet ja ympäristökohtaiset asetukset on eriytetty.
+    bootstrap.php
+    cron_b_orders_to_snipe.php
+    cron_c_consumables_sync.php
+    wp-plugin/
+    └── inventory2-monitor/
+        └── inventory2-monitor.php
+    README.md
 
-```
-cron/
-├── bootstrap.php                  # Yhteinen bootstrap (autoload, env, asetukset)
-├── .env                           # Ympäristömuuttujat (EI GitHubiin)
-├── cron_b_orders_to_snipe.php     # Tilaukset → consumables
-├── cron_b_components.php          # Tilaukset → components
-├── cron_c_consumables_sync.php    # Inventaario → Woo (consumables)
-├── cron_c_components_sync.php     # Inventaario → Woo (components)
-├── helpers/                       # Jaetut apufunktiot
-└── logs/                          # Ajojen lokit
-```
+------------------------------------------------------------------------
 
----
+## Cron B (WooCommerce → Snipe-IT)
 
-## Synkronointilogiikka
+### Mitä tekee
 
-### Cron B – WooCommerce → Snipe-IT
+1.  Hakee WooCommerce-tilaukset (`processing`, `completed`)
+2.  Tunnistaa Snipe-consumablet SKU-muodosta `snipe-consumable-<id>`
+3.  Checkouttaa määrät Snipe-IT:hen
+4.  Merkitsee tilauksen synkatuksi (`_snipe_synced=yes`)
 
-Ajetaan ajastetusti käsittelemään WooCommercen valmiit tilaukset.
+### Tavoite
 
-**Vaiheet:**
+-  Samaa tilausta ei käsitellä kahdesti
 
-1. Haetaan käsittelemättömät tilaukset
-2. Käydään tilausrivit läpi
-3. SKU-mäppäys → Snipe-IT item
-4. Vähennetään varastosaldo:
+------------------------------------------------------------------------
 
-   * Consumables
-5. Merkitään tilaus synkatuksi (order meta)
+## Cron C (Snipe-IT → WooCommerce)
 
-**Takuut:**
+### Myytävien tuotteiden valinta
 
-* Jokainen tilaus käsitellään vain kerran
-* Aiemmin synkatut tilaukset ohitetaan
+Cron C käyttää **supplier-pohjaista suodatusta**:
 
----
+-   Snipe-IT haussa käytetään `search_fields=supplier.name`
+-   `search=Myynnissä`
+-   Lisäksi varmistetaan rivitasolla, että supplier vastaa
+    `SALE_SUPPLIER_NAME`-arvoa
 
-### Cron C – Snipe-IT → WooCommerce
+### Tuotteen elinkaari WooCommercessa
 
-Ajetaan ajastetusti synkronoimaan inventaarion tila verkkokauppaan.
+-   Uusi tuote luodaan private/hidden-tilaan
+-   Jos saldo = 0 → piilotetaan
+-   Jos saldo \> 0 ja tuote on ollut aiemmin julkaistu → voidaan
+    julkaista automaattisesti
 
-#### Suodatus
+### Lisälogiikka
 
-* Synkataan vain kategoriat, joiden nimi päättyy `-myynnissä`
+-   Cron C pitää listaa aktiivisista Snipe-ID:istä
+-   Piilottaa Woo-tuotteet, joita ei enää löydy aktiivisesta
+    supplier-listasta (`hide_products_not_in_active_list`)
 
-#### Tuotteen elinkaari
+------------------------------------------------------------------------
 
-| Tilanne                              | Toiminta                    |
-| ------------------------------------ | --------------------------- |
-| Uusi tuote                           | Luodaan piilotettuna        |
-| Varastosaldo = 0                     | Piilotetaan automaattisesti |
-| Varastosaldo > 0 + aiemmin julkaistu | Julkaistaan automaattisesti |
+## Ympäristömuuttujat (.env)
 
-Tuote voidaan julkaista automaattisesti vasta sen jälkeen, kun se on **kerran julkaistu käsin** (tieto tallennetaan metadataan).
+Luo projektihakemistoon `.env`:
 
----
-
-## Design-päätökset
-
-### Miksi uusia tuotteita ei julkaista automaattisesti?
-
-Tämä estää:
-
-* Keskeneräisten tuotteiden päätymisen kauppaan
-* Virheelliset hinnat
-* Puuttuvat kuvat ja kuvaukset
-
-Ratkaisu pakottaa **ihminen mukana -mallin** ensimmäisessä julkaisussa.
-
----
-
-## Vaatimukset
-
-* PHP **8.2+**
-* cPanel (tai vastaava) cron-ajojen tuki
-* WooCommerce REST API -avaimet
-* Snipe-IT REST API -avaimet
-
----
-
-## Asennus 
-
-### 1. Repositorion kloonaus
-
-Kloonaa repo esimerkiksi cPanel-ympäristöön:
-
-```
-cd /home/USER/
-git clone https://github.com/jjarvio/inventory2.0.git cron
-```
-
----
-
-### 2. `.env`-tiedoston luonti
-
-Luo `cron/.env` ja lisää vähintään seuraavat muuttujat:
-
-```
+``` env
 # WooCommerce
-WC_API_URL=https://kauppa.example.fi
-WC_CONSUMER_KEY=ck_xxx
-WC_CONSUMER_SECRET=cs_xxx
+WOO_URL=https://kauppa.example.fi
+WOO_CONSUMER_KEY=ck_xxx
+WOO_CONSUMER_SECRET=cs_xxx
 
 # Snipe-IT
-SNIPE_API_URL=https://snipe.example.fi
+SNIPE_BASE_URL=https://snipe.example.fi
 SNIPE_API_TOKEN=xxxxxxxx
 
 # Yleiset
 LOG_PATH=/home/USER/cron/logs
+SALE_SUPPLIER_NAME=Myynnissä
+
+# Debug (optional)
+CRON_B_DEBUG=false
+CRON_C_DEBUG=false
 ```
 
-⚠️ `.env` **ei kuulu versionhallintaan**.
+`.env` ei kuulu versionhallintaan.
 
----
+------------------------------------------------------------------------
 
-### 3. `bootstrap.php`
+## Ajo
 
-Kaikki cron-skriptit lataavat ensin `bootstrap.php`-tiedoston.
+### Käsin testaus
 
-Bootstrap vastaa:
-
-* `.env`-muuttujien lataamisesta
-* Autoloadista / helperien sisällytyksestä
-* Yhteisten asetusten alustamisesta
-
-Esimerkki (yksinkertaistettu):
-
-```
-require __DIR__ . '/bootstrap.php';
-```
-
----
-
-### 4. Oikeudet ja hakemistot
-
-Varmista, että:
-
-* `logs/` on kirjoitettava
-* Cron-skripteillä on ajo-oikeus
-
----
-
-### 5. Cron-ajojen lisääminen cPanelissa
-
-Esimerkki:
-
-```
-/usr/local/bin/php /home/USER/cron/cron_b_orders_to_snipe.php
-/usr/local/bin/php /home/USER/cron/cron_c_consumables_sync.php
-```
-
-Suositus:
-
-* Cron B: 1–5 min välein
-* Cron C: 5–15 min välein
-
----
-
-### 6. Testaus
-
-Aja jokainen skripti ensin käsin:
-
-```
+``` bash
 php cron_b_orders_to_snipe.php
 php cron_c_consumables_sync.php
 ```
 
-Tarkista `logs/`-hakemisto mahdollisten virheiden varalta ennen tuotantokäyttöä.
+### cPanel / cron esimerkki
 
----
+``` bash
+/usr/local/bin/php /home/USER/cron/cron_b_orders_to_snipe.php
+/usr/local/bin/php /home/USER/cron/cron_c_consumables_sync.php
+```
 
-## Lokitus ja virheenkäsittely
+### Suositus
 
-* Jokainen cron tuottaa aikaleimatun lokin
-* API-virheet kirjataan
-* Ajo on turvallista toistaa (idempotentti)
+-   Cron B: 1--5 min välein\
+-   Cron C: 5--15 min välein
 
----
+------------------------------------------------------------------------
+
+## Lokit
+
+-   Cron B: `LOG_PATH/cron_b_orders.log`
+-   Cron C: `LOG_PATH/cron_c_consumables.log`
+
+Tarkista lokit aina ensimmäisten ajojen jälkeen.
+
+------------------------------------------------------------------------
+
+## WordPress monitorointiplugin (optional)
+
+Polku:
+
+    wp-plugin/inventory2-monitor/inventory2-monitor.php
+
+### Ominaisuudet
+
+-   Cron B/C historiat WP Adminissa
+-   Virherivien poiminta
+-   Napit:
+    -   Aja Cron B nyt
+    -   Aja Cron C nyt
+    -   Tyhjennä lokit nyt
+-   Asetukset:
+    -   PHP-binääri
+    -   cron-scriptien polut
+    -   lokipolut
+    -   lokien automaattinen tyhjennysväli (päivinä)
+
+### Asennus
+
+1.  Kopioi `wp-plugin/inventory2-monitor` →
+    `wp-content/plugins/inventory2-monitor`
+2.  Aktivoi plugin WordPressissä
+3.  Avaa WP Adminissa **Inventory 2.0**
+4.  Aseta oikeat polut ympäristösi mukaan
+
+------------------------------------------------------------------------
+
+## Vaatimukset
+
+-   PHP 8.2+
+-   WooCommerce REST API -avaimet
+-   Snipe-IT API token
+-   Cron-ajojen tuki (cPanel / Unix cron)
+
+------------------------------------------------------------------------
+
 ## Tekijä
 
-**jjarvio**
-Inventory 2.0
+jjarvio
