@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Inventory 2.0 Monitor
+ * Plugin Name: Inventory monitor
  * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
  * Version: 0.3.1
  * Author: jjarvio
@@ -36,8 +36,8 @@ add_action(INV2_CLEANUP_HOOK, 'inv2_maybe_cleanup_logs');
  
 add_action('admin_menu', function (): void {
     add_menu_page(
-        'Inventory 2.0 Monitor',
-        'Inventory 2.0',
+        'Inventory monitor',
+        'Inventory monitor',
         'manage_options',
         'inv2-monitor',
         'inv2_render_admin_page',
@@ -189,7 +189,7 @@ function inv2_render_log_panel(string $title, string $logPath): void
     $lines  = inv2_tail_file($logPath);
     $errors = inv2_extract_errors($lines);
 
-    echo '<div class="postbox"><div class="postbox-header"><h2>' . esc_html($title) . '</h2></div><div class="inside">';
+    echo '<div class="postbox"><div class="postbox-header"><h2 style="padding:8px 12px;margin:0;">' . esc_html($title) . '</h2></div><div class="inside">';
     echo '<p><code>' . esc_html($logPath) . '</code></p>';
 
     echo '<strong>Virheet</strong>';
@@ -207,7 +207,7 @@ function inv2_render_log_panel(string $title, string $logPath): void
 
 function inv2_render_run_result(?array $runResult): void
 {
-    echo '<div class="postbox"><div class="postbox-header"><h2>Suorituksen loki</h2></div><div class="inside">';
+    echo '<div class="postbox"><div class="postbox-header"><h2 style="padding:8px 12px;margin:0;">Suorituksen loki</h2></div><div class="inside">';
     if (!$runResult) {
         echo '<p>Ei suorituksia tässä istunnossa.</p>';
     } else {
@@ -237,25 +237,25 @@ function inv2_render_admin_page(): void
         inv2_clear_logs_now();
     }
 
-    echo '<div class="wrap"><h1>Inventory 2.0 Monitor</h1>';
+    echo '<div class="wrap"><h1>Inventory monitor</h1>';
 
     inv2_render_run_result($runResult);
 
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-    inv2_render_log_panel('Cron B', $settings['cron_b_log']);
-    inv2_render_log_panel('Cron C', $settings['cron_c_log']);
+    inv2_render_log_panel('WooCommerce-tilausten synkronointi Snipe-IT:iin', $settings['cron_b_log']);
+    inv2_render_log_panel('Snipe-IT-varastosynkronointi WooCommerceen', $settings['cron_c_log']);
     echo '</div>';
 
     echo '<h2>Toiminnot</h2><div style="display:flex;gap:10px;">';
 
     echo '<form method="post">';
     wp_nonce_field('inv2_run_cron_action');
-    echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja Cron B nyt</button>';
+    echo '<button class="button button-primary" name="inv2_run_action" value="run_b">Aja tilausten synkronointi nyt</button>';
     echo '</form>';
 
     echo '<form method="post">';
     wp_nonce_field('inv2_run_cron_action');
-    echo '<button class="button button-primary" name="inv2_run_action" value="run_c">Aja Cron C nyt</button>';
+    echo '<button class="button button-primary" name="inv2_run_action" value="run_c">Aja varastosynkronointi nyt</button>';
     echo '</form>';
 
     echo '<form method="post">';
