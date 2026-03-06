@@ -60,6 +60,8 @@ add_action('admin_init', function (): void {
     inv2_maybe_cleanup_logs();
 });
 
+add_action('wp_ajax_inv2_logs_status', 'inv2_ajax_logs_status');
+
 
  // Settings
  
@@ -239,6 +241,33 @@ function inv2_filter_lines(array $lines, bool $errorsOnly = false, string $searc
     }));
 }
 
+function inv2_get_logs_status(): array
+{
+    $settings = inv2_get_settings();
+    $status = [];
+
+    foreach (['cron_b_log', 'cron_c_log'] as $key) {
+        $path = $settings[$key] ?? '';
+        $status[$key] = [
+            'path' => $path,
+            'mtime' => ($path && file_exists($path)) ? (int) filemtime($path) : 0,
+            'size' => ($path && file_exists($path)) ? (int) filesize($path) : 0,
+        ];
+    }
+
+    return $status;
+}
+
+function inv2_ajax_logs_status(): void
+{
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(['message' => 'Unauthorized'], 403);
+    }
+
+    check_ajax_referer('inv2_logs_status_nonce', 'nonce');
+    wp_send_json_success(['logs' => inv2_get_logs_status()]);
+}
+
 function inv2_log_download_url(string $logPath): string
 {
     return wp_nonce_url(
@@ -364,24 +393,77 @@ function inv2_render_admin_page(): void
     inv2_render_log_panel('Snipe-IT-varastosynkronointi WooCommerceen', $settings['cron_c_log'], 'cron_c');
     echo '</div>';
 
-    echo '<script>
-    document.querySelectorAll(".inv2-copy-log").forEach(function (button) {
-        button.addEventListener("click", function () {
-            var targetId = button.getAttribute("data-target");
-            var target = document.getElementById(targetId);
-            if (!target) {
+        $logsStatusNonce = wp_create_nonce('inv2_logs_status_nonce');
+    $logsStatus = inv2_get_logs_status();
+    $pollScript = sprintf(
+        <<<'JS'
+<script>
+(function () {
+    var ajaxUrl = %s;
+    var nonce = %s;
+    var lastStatus = %s;
+
+    function normalizeStatus(logs) {
+        return JSON.stringify(logs || {});
+    }
+
+    function pollLogs() {
+        if (document.visibilityState !== 'visible') {
+            return;
+        }
+
+        var params = new URLSearchParams();
+        params.set('action', 'inv2_logs_status');
+        params.set('nonce', nonce);
+
+        fetch(ajaxUrl, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+            body: params.toString(),
+            credentials: 'same-origin'
+        })
+        .then(function (response) { return response.json(); })
+        .then(function (payload) {
+            if (!payload || !payload.success || !payload.data || !payload.data.logs) {
                 return;
             }
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(target.value);
-            } else {
-                target.select();
-                document.execCommand("copy");
+            var nextStatus = normalizeStatus(payload.data.logs);
+            if (nextStatus !== normalizeStatus(lastStatus)) {
+                window.location.reload();
             }
+        })
+        .catch(function () {
+            // ignore polling errors
         });
+    }
+
+    setInterval(pollLogs, 15000);
+}());
+
+document.querySelectorAll('.inv2-copy-log').forEach(function (button) {
+    button.addEventListener('click', function () {
+        var targetId = button.getAttribute('data-target');
+        var target = document.getElementById(targetId);
+        if (!target) {
+            return;
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(target.value);
+        } else {
+            target.select();
+            document.execCommand('copy');
+        }
     });
-    </script>';
+});
+</script>
+JS,
+        wp_json_encode(admin_url('admin-ajax.php')),
+        wp_json_encode($logsStatusNonce),
+        wp_json_encode($logsStatus)
+    );
+    echo $pollScript;
 
     echo '<h2>Toiminnot</h2><div style="display:flex;gap:10px;">';
 
