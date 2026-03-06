@@ -175,7 +175,37 @@ function inv2_tail_file(string $path, int $maxLines = 120): array
     if (!file_exists($path)) {
         return [];
     }
-    $lines = file($path, FILE_IGNORE_NEW_LINES);
+
+    $maxLines = max(1, $maxLines);
+    $file = @fopen($path, 'rb');
+    if (!$file) {
+        return [];
+    }
+
+    $buffer = '';
+    $chunkSize = 4096;
+    $lineBreaks = 0;
+
+    fseek($file, 0, SEEK_END);
+    $position = ftell($file);
+
+    while ($position > 0 && $lineBreaks <= $maxLines) {
+        $readSize = min($chunkSize, $position);
+        $position -= $readSize;
+        fseek($file, $position);
+        $chunk = (string) fread($file, $readSize);
+        $buffer = $chunk . $buffer;
+        $lineBreaks += substr_count($chunk, "\n");
+    }
+
+    fclose($file);
+
+    $lines = preg_split('/\r\n|\r|\n/', $buffer);
+    if ($lines === false) {
+        return [];
+    }
+
+    $lines = array_values(array_filter($lines, static fn($line): bool => $line !== ''));
     return array_slice($lines, -$maxLines);
 }
 
@@ -184,22 +214,107 @@ function inv2_extract_errors(array $lines): array
     return array_filter($lines, fn($l) => preg_match('/error|fatal|exception|failed/i', $l));
 }
 
-function inv2_render_log_panel(string $title, string $logPath): void
+function inv2_is_error_line(string $line): bool
 {
-    $lines  = inv2_tail_file($logPath);
+    return (bool) preg_match('/error|fatal|exception|failed/i', $line);
+}
+
+function inv2_filter_lines(array $lines, bool $errorsOnly = false, string $search = ''): array
+{
+    $search = trim($search);
+
+    return array_values(array_filter($lines, static function (string $line) use ($errorsOnly, $search): bool {
+        if ($errorsOnly && !inv2_is_error_line($line)) {
+            return false;
+        }
+
+        if ($search !== '' && stripos($line, $search) === false) {
+            return false;
+        }
+
+        return true;
+    }));
+}
+
+function inv2_log_download_url(string $logPath): string
+{
+    return wp_nonce_url(
+        add_query_arg(
+            [
+                'page' => 'inv2-monitor',
+                'inv2_download_log' => rawurlencode($logPath),
+            ],
+            admin_url('admin.php')
+        ),
+        'inv2_download_log:' . $logPath
+    );
+}
+
+function inv2_maybe_handle_log_download(): void
+{
+    if (!is_admin() || !current_user_can('manage_options') || !isset($_GET['inv2_download_log'])) {
+        return;
+    }
+
+    $logPath = (string) rawurldecode(wp_unslash($_GET['inv2_download_log']));
+    check_admin_referer('inv2_download_log:' . $logPath);
+
+    if (!file_exists($logPath) || !is_readable($logPath)) {
+        wp_die('Lokia ei löytynyt tai sitä ei voi lukea.');
+    }
+
+    nocache_headers();
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . basename($logPath) . '"');
+    header('Content-Length: ' . (string) filesize($logPath));
+    readfile($logPath);
+    exit;
+}
+
+add_action('admin_init', 'inv2_maybe_handle_log_download');
+
+function inv2_render_log_panel(string $title, string $logPath, string $id): void
+{
+    $lineOptions = [50, 200, 1000];
+    $selectedLineLimit = isset($_GET[$id . '_lines']) ? (int) $_GET[$id . '_lines'] : 200;
+    if (!in_array($selectedLineLimit, $lineOptions, true)) {
+        $selectedLineLimit = 200;
+    }
+
+    $errorsOnly = !empty($_GET[$id . '_errors_only']);
+    $search = isset($_GET[$id . '_search']) ? sanitize_text_field(wp_unslash($_GET[$id . '_search'])) : '';
+
+    $lines  = inv2_tail_file($logPath, $selectedLineLimit);
     $errors = inv2_extract_errors($lines);
+    $filteredLines = inv2_filter_lines($lines, $errorsOnly, $search);
+    $downloadUrl = inv2_log_download_url($logPath);
 
     echo '<div class="postbox"><div class="postbox-header"><h2 style="padding:8px 12px;margin:0;">' . esc_html($title) . '</h2></div><div class="inside">';
     echo '<p><code>' . esc_html($logPath) . '</code></p>';
+
+    echo '<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
+    echo '<input type="hidden" name="page" value="inv2-monitor">';
+    echo '<label>Näytä rivejä <select name="' . esc_attr($id . '_lines') . '">';
+    foreach ($lineOptions as $option) {
+        echo '<option value="' . esc_attr((string) $option) . '"' . selected($selectedLineLimit, $option, false) . '>' . esc_html((string) $option) . '</option>';
+    }
+    echo '</select></label>';
+
+    echo '<label><input type="checkbox" name="' . esc_attr($id . '_errors_only') . '" value="1"' . checked($errorsOnly, true, false) . '> Näytä vain virheet</label>';
+    echo '<label>Hae tekstillä <input type="text" name="' . esc_attr($id . '_search') . '" value="' . esc_attr($search) . '"></label>';
+    submit_button('Suodata', 'secondary', '', false);
+    echo '<a class="button" href="' . esc_url($downloadUrl) . '">Lataa loki</a>';
+    echo '<button type="button" class="button inv2-copy-log" data-target="' . esc_attr($id . '-history') . '">Kopioi leikepöydälle</button>';
+    echo '</form>';
 
     echo '<strong>Virheet</strong>';
     echo $errors
         ? '<textarea rows="6" class="large-text code">' . esc_textarea(implode("\n", $errors)) . '</textarea>'
         : '<p>Ei virheitä.</p>';
 
-    echo '<strong>Historia</strong>';
-    echo $lines
-        ? '<textarea rows="10" class="large-text code">' . esc_textarea(implode("\n", $lines)) . '</textarea>'
+    echo '<strong>Historia (' . esc_html((string) count($filteredLines)) . ' riviä)</strong>';
+    echo $filteredLines
+        ? '<textarea id="' . esc_attr($id . '-history') . '" rows="10" class="large-text code">' . esc_textarea(implode("\n", $filteredLines)) . '</textarea>'
         : '<p>Ei lokeja.</p>';
 
     echo '</div></div>';
@@ -242,9 +357,28 @@ function inv2_render_admin_page(): void
     inv2_render_run_result($runResult);
 
     echo '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
-    inv2_render_log_panel('WooCommerce-tilausten synkronointi Snipe-IT:iin', $settings['cron_b_log']);
-    inv2_render_log_panel('Snipe-IT-varastosynkronointi WooCommerceen', $settings['cron_c_log']);
+    inv2_render_log_panel('WooCommerce-tilausten synkronointi Snipe-IT:iin', $settings['cron_b_log'], 'cron_b');
+    inv2_render_log_panel('Snipe-IT-varastosynkronointi WooCommerceen', $settings['cron_c_log'], 'cron_c');
     echo '</div>';
+
+    echo '<script>
+    document.querySelectorAll(".inv2-copy-log").forEach(function (button) {
+        button.addEventListener("click", function () {
+            var targetId = button.getAttribute("data-target");
+            var target = document.getElementById(targetId);
+            if (!target) {
+                return;
+            }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(target.value);
+            } else {
+                target.select();
+                document.execCommand("copy");
+            }
+        });
+    });
+    </script>';
 
     echo '<h2>Toiminnot</h2><div style="display:flex;gap:10px;">';
 
