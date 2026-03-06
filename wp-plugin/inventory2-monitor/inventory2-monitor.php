@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Inventory monitor
  * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
- * Version: 0.3.1
+ * Version: 1.0.0
  * Author: jjarvio
  */
 
