@@ -208,12 +208,6 @@ function inv2_tail_file(string $path, int $maxLines = 120): array
     $lines = array_values(array_filter($lines, static fn($line): bool => $line !== ''));
     return array_slice($lines, -$maxLines);
 }
-
-function inv2_extract_errors(array $lines): array
-{
-    return array_filter($lines, fn($l) => preg_match('/error|fatal|exception|failed/i', $l));
-}
-
 function inv2_is_error_line(string $line): bool
 {
     return (bool) preg_match('/error|fatal|exception|failed/i', $line);
@@ -285,7 +279,6 @@ function inv2_render_log_panel(string $title, string $logPath, string $id): void
     $search = isset($_GET[$id . '_search']) ? sanitize_text_field(wp_unslash($_GET[$id . '_search'])) : '';
 
     $lines  = inv2_tail_file($logPath, $selectedLineLimit);
-    $errors = inv2_extract_errors($lines);
     $filteredLines = inv2_filter_lines($lines, $errorsOnly, $search);
     $downloadUrl = inv2_log_download_url($logPath);
 
@@ -307,14 +300,9 @@ function inv2_render_log_panel(string $title, string $logPath, string $id): void
     echo '<button type="button" class="button inv2-copy-log" data-target="' . esc_attr($id . '-history') . '">Kopioi</button>';
     echo '</form>';
 
-    echo '<strong>Virheet</strong>';
-    echo $errors
-        ? '<textarea rows="6" class="large-text code">' . esc_textarea(implode("\n", $errors)) . '</textarea>'
-        : '<p>Ei virheitä.</p>';
-
     echo '<strong>Historia (' . esc_html((string) count($filteredLines)) . ' riviä)</strong>';
     echo $filteredLines
-        ? '<textarea id="' . esc_attr($id . '-history') . '" rows="10" class="large-text code">' . esc_textarea(implode("\n", $filteredLines)) . '</textarea>'
+        ? '<textarea id="' . esc_attr($id . '-history') . '" rows="14" class="large-text code">' . esc_textarea(implode("\n", $filteredLines)) . '</textarea>'
         : '<p>Ei lokeja.</p>';
 
     echo '</div></div>';
