@@ -213,11 +213,20 @@ function inv2_is_error_line(string $line): bool
     return (bool) preg_match('/error|fatal|exception|failed/i', $line);
 }
 
-function inv2_filter_lines(array $lines, bool $errorsOnly = false, string $search = ''): array
+function inv2_is_debug_line(string $line): bool
+{
+    return (bool) preg_match('/\bdebug\b/i', $line);
+}
+
+function inv2_filter_lines(array $lines, bool $errorsOnly = false, string $search = '', bool $showDebugLines = false): array
 {
     $search = trim($search);
 
-    return array_values(array_filter($lines, static function (string $line) use ($errorsOnly, $search): bool {
+    return array_values(array_filter($lines, static function (string $line) use ($errorsOnly, $search, $showDebugLines): bool {
+        if (!$showDebugLines && inv2_is_debug_line($line)) {
+            return false;
+        }
+
         if ($errorsOnly && !inv2_is_error_line($line)) {
             return false;
         }
@@ -276,10 +285,11 @@ function inv2_render_log_panel(string $title, string $logPath, string $id): void
     }
 
     $errorsOnly = !empty($_GET[$id . '_errors_only']);
+    $showDebugLines = !empty($_GET['inv2_debug_mode']);
     $search = isset($_GET[$id . '_search']) ? sanitize_text_field(wp_unslash($_GET[$id . '_search'])) : '';
 
     $lines  = inv2_tail_file($logPath, $selectedLineLimit);
-    $filteredLines = inv2_filter_lines($lines, $errorsOnly, $search);
+    $filteredLines = inv2_filter_lines($lines, $errorsOnly, $search, $showDebugLines);
     $downloadUrl = inv2_log_download_url($logPath);
 
     echo '<div class="postbox"><div class="postbox-header"><h2 style="padding:8px 12px;margin:0;">' . esc_html($title) . '</h2></div><div class="inside">';
@@ -294,6 +304,7 @@ function inv2_render_log_panel(string $title, string $logPath, string $id): void
     echo '</select></label>';
 
     echo '<label><input type="checkbox" name="' . esc_attr($id . '_errors_only') . '" value="1"' . checked($errorsOnly, true, false) . '> Näytä vain virheet</label>';
+    echo '<label><input type="checkbox" name="inv2_debug_mode" value="1"' . checked($showDebugLines, true, false) . '> Debug mode (näytä debug-rivit)</label>';
     echo '<label>Hae tekstillä <input type="text" name="' . esc_attr($id . '_search') . '" value="' . esc_attr($search) . '"></label>';
     submit_button('Suodata', 'secondary', '', false);
     echo '<a class="button" href="' . esc_url($downloadUrl) . '">Lataa loki</a>';
