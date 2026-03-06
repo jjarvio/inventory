@@ -304,7 +304,7 @@ function inv2_render_log_panel(string $title, string $logPath, string $id): void
     echo '<label>Hae tekstillä <input type="text" name="' . esc_attr($id . '_search') . '" value="' . esc_attr($search) . '"></label>';
     submit_button('Suodata', 'secondary', '', false);
     echo '<a class="button" href="' . esc_url($downloadUrl) . '">Lataa loki</a>';
-    echo '<button type="button" class="button inv2-copy-log" data-target="' . esc_attr($id . '-history') . '">Kopioi leikepöydälle</button>';
+    echo '<button type="button" class="button inv2-copy-log" data-target="' . esc_attr($id . '-history') . '">Kopioi</button>';
     echo '</form>';
 
     echo '<strong>Virheet</strong>';
