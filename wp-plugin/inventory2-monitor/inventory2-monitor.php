@@ -295,20 +295,24 @@ function inv2_render_log_panel(string $title, string $logPath, string $id): void
     echo '<div class="postbox"><div class="postbox-header"><h2 style="padding:8px 12px;margin:0;">' . esc_html($title) . '</h2></div><div class="inside">';
     echo '<p><code>' . esc_html($logPath) . '</code></p>';
 
-    echo '<form method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">';
+    echo '<form method="get" style="margin-bottom:12px;">';
     echo '<input type="hidden" name="page" value="inv2-monitor">';
+    echo '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">';
     echo '<label>Näytä rivejä <select name="' . esc_attr($id . '_lines') . '">';
     foreach ($lineOptions as $option) {
         echo '<option value="' . esc_attr((string) $option) . '"' . selected($selectedLineLimit, $option, false) . '>' . esc_html((string) $option) . '</option>';
     }
     echo '</select></label>';
-
     echo '<label><input type="checkbox" name="' . esc_attr($id . '_errors_only') . '" value="1"' . checked($errorsOnly, true, false) . '> Näytä vain virheet</label>';
     echo '<label><input type="checkbox" name="inv2_debug_mode" value="1"' . checked($showDebugLines, true, false) . '> Debug mode (näytä debug-rivit)</label>';
+    echo '</div>';
+
+    echo '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">';
     echo '<label>Hae tekstillä <input type="text" name="' . esc_attr($id . '_search') . '" value="' . esc_attr($search) . '"></label>';
     submit_button('Suodata', 'secondary', '', false);
     echo '<a class="button" href="' . esc_url($downloadUrl) . '">Lataa loki</a>';
     echo '<button type="button" class="button inv2-copy-log" data-target="' . esc_attr($id . '-history') . '">Kopioi</button>';
+    echo '</div>';
     echo '</form>';
 
     echo '<strong>Historia (' . esc_html((string) count($filteredLines)) . ' riviä)</strong>';
