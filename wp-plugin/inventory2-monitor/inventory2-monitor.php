@@ -165,12 +165,19 @@ function inv2_run_script(string $scriptPath, string $phpBinary, ?string $logPath
         return ['ok' => false, 'output' => 'PHP:n exec-funktio ei ole käytettävissä tällä palvelimella.'];
     }
 
-    $scriptDir = dirname($scriptPath);
+    $scriptRealPath = realpath($scriptPath) ?: $scriptPath;
+    $scriptDir = dirname($scriptRealPath);
+    $envFile = $scriptDir . '/.env';
+
+    if (!is_readable($envFile)) {
+        return ['ok' => false, 'output' => '.env puuttuu tai ei ole luettavissa polussa: ' . $envFile];
+    }
+
     $command = 'cd ' . escapeshellarg($scriptDir)
         . ' && '
         . escapeshellarg($phpBinary)
-        . ' '
-        . escapeshellarg($scriptPath)
+        . ' -d display_errors=1 -d log_errors=0 -d error_reporting=32767 '
+        . escapeshellarg($scriptRealPath)
         . ' 2>&1';
 
     $out = [];
@@ -178,10 +185,29 @@ function inv2_run_script(string $scriptPath, string $phpBinary, ?string $logPath
     exec($command, $out, $code);
 
     $output = trim(implode("\n", $out));
+
+    if ($code !== 0 && $output === '') {
+        $debugCommand = 'cd ' . escapeshellarg($scriptDir)
+            . ' && '
+            . escapeshellarg($phpBinary)
+            . ' -n -d display_errors=1 -d log_errors=0 -d error_reporting=32767 '
+            . escapeshellarg($scriptRealPath)
+            . ' 2>&1';
+
+        $debugOut = [];
+        $debugCode = 0;
+        exec($debugCommand, $debugOut, $debugCode);
+        $debugOutput = trim(implode("\n", $debugOut));
+
+        if ($debugOutput !== '') {
+            $output = "Ei normaalia virhetulostetta (exit code {$code}). Pakotettu debug-ajo (exit {$debugCode}):\n" . $debugOutput;
+        }
+    }
+
     if ($output === '') {
         $output = $code === 0
             ? 'Suoritus päättyi ilman tulostetta.'
-            : 'Suoritus epäonnistui ilman virhetulostetta (exit code ' . $code . ').';
+            : 'Suoritus epäonnistui ilman virhetulostetta (exit code ' . $code . '). Komento: ' . $command;
     }
 
     if ($logPath && is_string($logPath) && $logPath !== '') {
