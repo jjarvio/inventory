@@ -27,6 +27,7 @@ $SNIPE_API_TOKEN   = getenv('SNIPE_API_TOKEN');
 $SNIPE_LOCATION_ID = (int) getenv('SNIPE_LOCATION_ID');
 
 $LOG_FILE = rtrim(getenv('LOG_PATH'), '/') . '/cron_b_orders.log';
+$LOCK_FILE = rtrim(getenv('LOG_PATH'), '/') . '/cron_b_orders.lock';
 
 const DRY_RUN = false;
 
@@ -63,6 +64,19 @@ function debugMsg(string $msg): void
         log_line('[DEBUG] ' . $msg);
     }
 }
+
+$lockHandle = fopen($LOCK_FILE, 'c');
+if ($lockHandle === false) {
+    throw new RuntimeException("Unable to open lock file: {$LOCK_FILE}");
+}
+
+if (!flock($lockHandle, LOCK_EX | LOCK_NB)) {
+    log_line('Another Cron B process is already running → exit');
+    exit(0);
+}
+
+ftruncate($lockHandle, 0);
+fwrite($lockHandle, (string) getmypid());
 
 $RUN_ID = bin2hex(random_bytes(4));
 

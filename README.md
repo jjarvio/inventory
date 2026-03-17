@@ -43,6 +43,7 @@ WooCommercen dataa turvallisesti cron-ajojen kautta.
 2.  Tunnistaa Snipe-consumablet SKU-muodosta `snipe-consumable-<id>`
 3.  Checkouttaa määrät Snipe-IT:hen
 4.  Merkitsee tilauksen synkatuksi (`_snipe_synced=yes`)
+5.  Estää rinnakkaiset ajot tiedostolukolla (`cron_b_orders.lock`)
 
 ### Tavoite
 
