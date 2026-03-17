@@ -48,6 +48,7 @@ WooCommercen dataa turvallisesti cron-ajojen kautta.
 ### Tavoite
 
 -  Samaa tilausta ei käsitellä kahdesti
+-  Jos Snipe checkout palauttaa 5xx-virheen, tilaus merkitään manuaalitarkistukseen (`_snipe_sync_manual_review=yes`) eikä sitä yritetä automaattisesti uudelleen
 
 ------------------------------------------------------------------------
 

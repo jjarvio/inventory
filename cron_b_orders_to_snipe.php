@@ -154,15 +154,21 @@ function woo_get_orders(): array
     return is_array($res['json']) ? $res['json'] : [];
 }
 
-function order_has_meta(array $order, string $key): bool
+function order_get_meta_value(array $order, string $key): ?string
 {
     foreach ($order['meta_data'] ?? [] as $m) {
-        if (($m['key'] ?? null) === $key && ($m['value'] ?? null) === 'yes') {
-            return true;
+        if (($m['key'] ?? null) === $key) {
+            $value = $m['value'] ?? null;
+            return is_scalar($value) ? (string) $value : null;
         }
     }
 
-    return false;
+    return null;
+}
+
+function order_has_meta(array $order, string $key): bool
+{
+    return order_get_meta_value($order, $key) === 'yes';
 }
 
 function mark_order_synced(int $order_id): bool
@@ -195,6 +201,37 @@ function mark_order_synced(int $order_id): bool
     return true;
 }
 
+function mark_order_needs_manual_review(int $order_id, string $reason): bool
+{
+    global $WOO_BASE_URL;
+
+    if (DRY_RUN) {
+        log_line("DRY_RUN mark order {$order_id} manual review reason={$reason}");
+        return true;
+    }
+
+    $url = $WOO_BASE_URL . "/wp-json/wc/v3/orders/{$order_id}?" . woo_auth();
+
+    $res = http_request(
+        'PUT',
+        $url,
+        ['Content-Type: application/json'],
+        json_encode([
+            'meta_data' => [
+                ['key' => '_snipe_sync_manual_review', 'value' => 'yes'],
+                ['key' => '_snipe_sync_error', 'value' => $reason],
+            ],
+        ])
+    );
+
+    if (!$res['ok']) {
+        log_line("ERROR WOO mark manual review failed order={$order_id} code={$res['code']} err={$res['err']} raw={$res['raw']}");
+        return false;
+    }
+
+    return true;
+}
+
 function snipe_headers(): array
 {
     global $SNIPE_API_TOKEN;
@@ -206,7 +243,7 @@ function snipe_headers(): array
     ];
 }
 
-function snipe_checkout(int $consumable_id, int $qty, int $order_id): bool
+function snipe_checkout(int $consumable_id, int $qty, int $order_id): array
 {
     global $SNIPE_BASE_URL;
 
@@ -214,7 +251,7 @@ function snipe_checkout(int $consumable_id, int $qty, int $order_id): bool
 
     if (DRY_RUN) {
         log_line("DRY_RUN checkout consumable={$consumable_id} qty={$qty} (order={$order_id})");
-        return true;
+        return ['ok' => true, 'code' => 0, 'raw' => ''];
     }
 
     $payload = [
@@ -229,12 +266,13 @@ function snipe_checkout(int $consumable_id, int $qty, int $order_id): bool
         log_line(
             "ERROR SNIPE checkout failed id={$consumable_id} order={$order_id} code={$res['code']} err={$res['err']} raw={$res['raw']}"
         );
-        return false;
+        return ['ok' => false, 'code' => (int) $res['code'], 'raw' => (string) $res['raw']];
     }
 
     log_line("SNIPE checkout OK consumable={$consumable_id} qty={$qty} (order={$order_id})");
-    return true;
+    return ['ok' => true, 'code' => (int) $res['code'], 'raw' => (string) $res['raw']];
 }
+
 
 log_line("=== Cron B Orders START id={$RUN_ID} ===");
 debugMsg('Cron B started');
@@ -257,6 +295,12 @@ foreach ($orders as $order) {
 
     if (order_has_meta($order, '_snipe_synced')) {
         log_line("ORDER {$order_id} already synced → skip");
+        continue;
+    }
+
+    if (order_has_meta($order, '_snipe_sync_manual_review')) {
+        $reason = order_get_meta_value($order, '_snipe_sync_error') ?? 'unknown';
+        log_line("ORDER {$order_id} needs manual review ({$reason}) → skip");
         continue;
     }
 
@@ -283,7 +327,13 @@ foreach ($orders as $order) {
     }
 
     foreach ($consumables as $cid => $qty) {
-        if (!snipe_checkout($cid, $qty, $order_id)) {
+        $checkout = snipe_checkout($cid, $qty, $order_id);
+        if (!$checkout['ok']) {
+            if ($checkout['code'] >= 500) {
+                $reason = "snipe_http_{$checkout['code']}_possible_partial_checkout";
+                mark_order_needs_manual_review($order_id, $reason);
+                log_line("ORDER {$order_id} marked for manual review to prevent duplicate checkout ({$reason})");
+            }
             continue 2;
         }
     }

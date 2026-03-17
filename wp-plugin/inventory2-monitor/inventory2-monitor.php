@@ -212,7 +212,8 @@ function inv2_run_script(string $scriptPath, string $phpBinary, ?string $logPath
 
     if ($logPath && is_string($logPath) && $logPath !== '') {
         $prefix = '[' . date('Y-m-d H:i:s') . '] [WP monitor] ';
-        @file_put_contents($logPath, $prefix . $output . PHP_EOL, FILE_APPEND);
+        $summary = 'manual run exit_code=' . $code . ' ok=' . ($code === 0 ? 'yes' : 'no');
+        @file_put_contents($logPath, $prefix . $summary . PHP_EOL, FILE_APPEND);
     }
 
     return [
