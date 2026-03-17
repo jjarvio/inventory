@@ -90,7 +90,7 @@ WOO_CONSUMER_KEY=ck_xxx
 WOO_CONSUMER_SECRET=cs_xxx
 
 # Snipe-IT
-SNIPE_BASE_URL=https://snipe.example.fi
+SNIPE_BASE_URL=https://snipe.example.fi  # myös .../api/v1 käy
 SNIPE_API_TOKEN=xxxxxxxx
 
 # Yleiset
@@ -103,6 +103,9 @@ CRON_C_DEBUG=false
 ```
 
 `.env` ei kuulu versionhallintaan.
+
+`SNIPE_BASE_URL` voi olla joko palvelimen juuri-URL (suositus) tai API-URL (`.../api/v1`). Skriptit normalisoivat tämän automaattisesti.
+
 
 ------------------------------------------------------------------------
 

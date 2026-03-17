@@ -137,6 +137,23 @@ function woo_auth(): string
     return 'consumer_key=' . $WOO_CONSUMER_KEY . '&consumer_secret=' . $WOO_CONSUMER_SECRET;
 }
 
+
+function snipe_api_root(): string
+{
+    global $SNIPE_BASE_URL;
+
+    $base = rtrim($SNIPE_BASE_URL, '/');
+    $base = preg_replace('#/public/index\.php$#i', '', $base) ?? $base;
+    $base = preg_replace('#/api/v1$#i', '', $base) ?? $base;
+
+    return $base;
+}
+
+function snipe_api_base_url(): string
+{
+    return snipe_api_root() . '/api/v1';
+}
+
 function woo_get_orders(): array
 {
     global $WOO_BASE_URL;
@@ -247,7 +264,7 @@ function snipe_checkout(int $consumable_id, int $qty, int $order_id): array
 {
     global $SNIPE_BASE_URL;
 
-    $url = $SNIPE_BASE_URL . "/api/v1/consumables/{$consumable_id}/checkout";
+    $url = snipe_api_base_url() . "/consumables/{$consumable_id}/checkout";
 
     if (DRY_RUN) {
         log_line("DRY_RUN checkout consumable={$consumable_id} qty={$qty} (order={$order_id})");
