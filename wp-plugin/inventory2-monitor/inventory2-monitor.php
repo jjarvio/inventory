@@ -151,23 +151,50 @@ function inv2_clear_logs_now(): array
 
  // Cron runner
 
-function inv2_run_script(string $scriptPath, string $phpBinary): array
+function inv2_run_script(string $scriptPath, string $phpBinary, ?string $logPath = null): array
 {
     if (!file_exists($scriptPath)) {
         return ['ok' => false, 'output' => 'Scriptiä ei löydy: ' . $scriptPath];
     }
 
-    exec(
-        escapeshellarg($phpBinary) . ' ' . escapeshellarg($scriptPath) . ' 2>&1',
-        $out,
-        $code
-    );
+    if (!is_file($phpBinary) || !is_executable($phpBinary)) {
+        return ['ok' => false, 'output' => 'PHP-binääriä ei löydy tai se ei ole suoritettava: ' . $phpBinary];
+    }
+
+    if (!function_exists('exec')) {
+        return ['ok' => false, 'output' => 'PHP:n exec-funktio ei ole käytettävissä tällä palvelimella.'];
+    }
+
+    $scriptDir = dirname($scriptPath);
+    $command = 'cd ' . escapeshellarg($scriptDir)
+        . ' && '
+        . escapeshellarg($phpBinary)
+        . ' '
+        . escapeshellarg($scriptPath)
+        . ' 2>&1';
+
+    $out = [];
+    $code = 0;
+    exec($command, $out, $code);
+
+    $output = trim(implode("\n", $out));
+    if ($output === '') {
+        $output = $code === 0
+            ? 'Suoritus päättyi ilman tulostetta.'
+            : 'Suoritus epäonnistui ilman virhetulostetta (exit code ' . $code . ').';
+    }
+
+    if ($logPath && is_string($logPath) && $logPath !== '') {
+        $prefix = '[' . date('Y-m-d H:i:s') . '] [WP monitor] ';
+        @file_put_contents($logPath, $prefix . $output . PHP_EOL, FILE_APPEND);
+    }
 
     return [
         'ok'     => $code === 0,
-        'output' => implode("\n", $out),
+        'output' => $output,
     ];
 }
+
 
 
  // UI helpers
@@ -376,9 +403,12 @@ function inv2_render_admin_page(): void
 
     if (isset($_POST['inv2_run_action'])) {
         check_admin_referer('inv2_run_cron_action');
+
+        $isCronB = $_POST['inv2_run_action'] === 'run_b';
         $runResult = inv2_run_script(
-            $settings[$_POST['inv2_run_action'] === 'run_b' ? 'cron_b_script' : 'cron_c_script'],
-            $settings['php_binary']
+            $settings[$isCronB ? 'cron_b_script' : 'cron_c_script'],
+            $settings['php_binary'],
+            $settings[$isCronB ? 'cron_b_log' : 'cron_c_log']
         );
     }
 
