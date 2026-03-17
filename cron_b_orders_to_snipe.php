@@ -285,7 +285,17 @@ if (empty($orders)) {
     exit(0);
 }
 
+$stopDueToSnipeOutage = false;
+
 foreach ($orders as $order) {
+    if ($stopDueToSnipeOutage) {
+        $skipOrderId = (int) ($order['id'] ?? 0);
+        if ($skipOrderId > 0) {
+            log_line("ORDER {$skipOrderId} skipped due to earlier Snipe 5xx outage in this run");
+        }
+        continue;
+    }
+
     $order_id = (int) ($order['id'] ?? 0);
     if ($order_id <= 0) {
         continue;
@@ -333,6 +343,8 @@ foreach ($orders as $order) {
                 $reason = "snipe_http_{$checkout['code']}_possible_partial_checkout";
                 mark_order_needs_manual_review($order_id, $reason);
                 log_line("ORDER {$order_id} marked for manual review to prevent duplicate checkout ({$reason})");
+                $stopDueToSnipeOutage = true;
+                log_line("SNIPE seems unhealthy (HTTP {$checkout['code']}) → stop processing remaining orders this run");
             }
             continue 2;
         }
