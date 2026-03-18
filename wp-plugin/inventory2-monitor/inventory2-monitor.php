@@ -415,7 +415,14 @@ function inv2_render_run_result(?array $runResult): void
     if (!$runResult) {
         echo '<p>Ei suorituksia tässä istunnossa.</p>';
     } else {
-        echo '<textarea rows="10" class="large-text code">' . esc_textarea($runResult['output']) . '</textarea>';
+        $output = (string) ($runResult['output'] ?? '');
+        $safeOutput = wp_check_invalid_utf8($output, true);
+
+        if ($safeOutput === '' && $output !== '' && function_exists('iconv')) {
+            $safeOutput = iconv('UTF-8', 'UTF-8//IGNORE', $output) ?: $output;
+        }
+
+        echo '<textarea rows="10" class="large-text code">' . esc_textarea($safeOutput) . '</textarea>';
     }
     echo '</div></div>';
 }
