@@ -97,6 +97,23 @@ function woo_auth(): string {
     return 'consumer_key=' . $WOO_CONSUMER_KEY . '&consumer_secret=' . $WOO_CONSUMER_SECRET;
 }
 
+
+function snipe_api_root(): string
+{
+    global $SNIPE_BASE_URL;
+
+    $base = rtrim($SNIPE_BASE_URL, '/');
+    $base = preg_replace('#/public/index\.php$#i', '', $base) ?? $base;
+    $base = preg_replace('#/api/v1$#i', '', $base) ?? $base;
+
+    return $base;
+}
+
+function snipe_api_base_url(): string
+{
+    return snipe_api_root() . '/api/v1';
+}
+
 // SALE FILTER
 
 function consumable_is_for_sale(array $c): bool {
@@ -120,7 +137,7 @@ function normalize_snipe_image_url(?string $imagePath): ?string {
         return $imagePath;
     }
 
-    $root = preg_replace('#/public/index\.php$#i', '', $SNIPE_BASE_URL);
+    $root = snipe_api_root();
 
     if (str_starts_with($imagePath, '/uploads/')) {
         return $root . $imagePath;
@@ -267,7 +284,7 @@ function snipe_get_consumables(int $offset, int $limit): array {
 
     $search = urlencode("Myynnissä");
 
-    $url = $SNIPE_BASE_URL . "/api/v1/consumables"
+    $url = snipe_api_base_url() . "/consumables"
         . "?search_fields=supplier.name"
         . "&search={$search}"
         . "&limit={$limit}"

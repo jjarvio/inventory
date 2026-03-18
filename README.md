@@ -43,10 +43,13 @@ WooCommercen dataa turvallisesti cron-ajojen kautta.
 2.  Tunnistaa Snipe-consumablet SKU-muodosta `snipe-consumable-<id>`
 3.  Checkouttaa määrät Snipe-IT:hen
 4.  Merkitsee tilauksen synkatuksi (`_snipe_synced=yes`)
+5.  Estää rinnakkaiset ajot tiedostolukolla (`cron_b_orders.lock`)
 
 ### Tavoite
 
 -  Samaa tilausta ei käsitellä kahdesti
+-  Jos Snipe checkout palauttaa 5xx-virheen, kyseinen tilaus merkitään manuaalitarkistukseen (`_snipe_sync_manual_review=yes`) eikä sitä yritetä automaattisesti uudelleen
+-  Samassa ajossa loppujen tilausten käsittely keskeytetään (Snipe outage -suoja), jotta massana ei synny turhia manuaalitarkistuksia
 
 ------------------------------------------------------------------------
 
@@ -87,7 +90,7 @@ WOO_CONSUMER_KEY=ck_xxx
 WOO_CONSUMER_SECRET=cs_xxx
 
 # Snipe-IT
-SNIPE_BASE_URL=https://snipe.example.fi
+SNIPE_BASE_URL=https://snipe.example.fi  # myös .../api/v1 käy
 SNIPE_API_TOKEN=xxxxxxxx
 
 # Yleiset
@@ -100,6 +103,9 @@ CRON_C_DEBUG=false
 ```
 
 `.env` ei kuulu versionhallintaan.
+
+`SNIPE_BASE_URL` voi olla joko palvelimen juuri-URL (suositus) tai API-URL (`.../api/v1`). Skriptit normalisoivat tämän automaattisesti.
+
 
 ------------------------------------------------------------------------
 
