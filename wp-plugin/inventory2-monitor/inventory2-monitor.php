@@ -151,23 +151,77 @@ function inv2_clear_logs_now(): array
 
  // Cron runner
 
-function inv2_run_script(string $scriptPath, string $phpBinary): array
+function inv2_run_script(string $scriptPath, string $phpBinary, ?string $logPath = null): array
 {
     if (!file_exists($scriptPath)) {
         return ['ok' => false, 'output' => 'Scriptiä ei löydy: ' . $scriptPath];
     }
 
-    exec(
-        escapeshellarg($phpBinary) . ' ' . escapeshellarg($scriptPath) . ' 2>&1',
-        $out,
-        $code
-    );
+    if (!is_file($phpBinary) || !is_executable($phpBinary)) {
+        return ['ok' => false, 'output' => 'PHP-binääriä ei löydy tai se ei ole suoritettava: ' . $phpBinary];
+    }
+
+    if (!function_exists('exec')) {
+        return ['ok' => false, 'output' => 'PHP:n exec-funktio ei ole käytettävissä tällä palvelimella.'];
+    }
+
+    $scriptRealPath = realpath($scriptPath) ?: $scriptPath;
+    $scriptDir = dirname($scriptRealPath);
+    $envFile = $scriptDir . '/.env';
+
+    if (!is_readable($envFile)) {
+        return ['ok' => false, 'output' => '.env puuttuu tai ei ole luettavissa polussa: ' . $envFile];
+    }
+
+    $command = 'cd ' . escapeshellarg($scriptDir)
+        . ' && '
+        . escapeshellarg($phpBinary)
+        . ' -d display_errors=1 -d log_errors=0 -d error_reporting=32767 '
+        . escapeshellarg($scriptRealPath)
+        . ' 2>&1';
+
+    $out = [];
+    $code = 0;
+    exec($command, $out, $code);
+
+    $output = trim(implode("\n", $out));
+
+    if ($code !== 0 && $output === '') {
+        $debugCommand = 'cd ' . escapeshellarg($scriptDir)
+            . ' && '
+            . escapeshellarg($phpBinary)
+            . ' -n -d display_errors=1 -d log_errors=0 -d error_reporting=32767 '
+            . escapeshellarg($scriptRealPath)
+            . ' 2>&1';
+
+        $debugOut = [];
+        $debugCode = 0;
+        exec($debugCommand, $debugOut, $debugCode);
+        $debugOutput = trim(implode("\n", $debugOut));
+
+        if ($debugOutput !== '') {
+            $output = "Ei normaalia virhetulostetta (exit code {$code}). Pakotettu debug-ajo (exit {$debugCode}):\n" . $debugOutput;
+        }
+    }
+
+    if ($output === '') {
+        $output = $code === 0
+            ? 'Suoritus päättyi ilman tulostetta.'
+            : 'Suoritus epäonnistui ilman virhetulostetta (exit code ' . $code . '). Komento: ' . $command;
+    }
+
+    if ($logPath && is_string($logPath) && $logPath !== '') {
+        $prefix = '[' . date('Y-m-d H:i:s') . '] [WP monitor] ';
+        $summary = 'manual run exit_code=' . $code . ' ok=' . ($code === 0 ? 'yes' : 'no');
+        @file_put_contents($logPath, $prefix . $summary . PHP_EOL, FILE_APPEND);
+    }
 
     return [
         'ok'     => $code === 0,
-        'output' => implode("\n", $out),
+        'output' => $output,
     ];
 }
+
 
 
  // UI helpers
@@ -361,7 +415,14 @@ function inv2_render_run_result(?array $runResult): void
     if (!$runResult) {
         echo '<p>Ei suorituksia tässä istunnossa.</p>';
     } else {
-        echo '<textarea rows="10" class="large-text code">' . esc_textarea($runResult['output']) . '</textarea>';
+        $output = (string) ($runResult['output'] ?? '');
+        $safeOutput = wp_check_invalid_utf8($output, true);
+
+        if ($safeOutput === '' && $output !== '' && function_exists('iconv')) {
+            $safeOutput = iconv('UTF-8', 'UTF-8//IGNORE', $output) ?: $output;
+        }
+
+        echo '<textarea rows="10" class="large-text code">' . esc_textarea($safeOutput) . '</textarea>';
     }
     echo '</div></div>';
 }
@@ -376,9 +437,12 @@ function inv2_render_admin_page(): void
 
     if (isset($_POST['inv2_run_action'])) {
         check_admin_referer('inv2_run_cron_action');
+
+        $isCronB = $_POST['inv2_run_action'] === 'run_b';
         $runResult = inv2_run_script(
-            $settings[$_POST['inv2_run_action'] === 'run_b' ? 'cron_b_script' : 'cron_c_script'],
-            $settings['php_binary']
+            $settings[$isCronB ? 'cron_b_script' : 'cron_c_script'],
+            $settings['php_binary'],
+            $settings[$isCronB ? 'cron_b_log' : 'cron_c_log']
         );
     }
 
