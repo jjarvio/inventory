@@ -1,9 +1,7 @@
 <?php
 /**
- * Plugin Name: Inventory monitor
- * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
+ * Plugin Name: Inventory Monitor
  * Version: 1.0.0
- * Author: jjarvio
  */
 
 if (!defined('ABSPATH')) exit;
@@ -57,6 +55,37 @@ add_action('wp_ajax_inv2_fetch_logs', function () {
     ]);
 });
 
+/* AJAX CLEAR LOG */
+
+add_action('wp_ajax_inv2_clear_log', function () {
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Unauthorized');
+    }
+
+    $type = $_POST['type'] ?? '';
+    $s = inv2_get_settings();
+
+    $map = [
+        'b' => $s['cron_b_log'],
+        'c' => $s['cron_c_log']
+    ];
+
+    if (!isset($map[$type])) {
+        wp_send_json_error('Invalid type');
+    }
+
+    $file = $map[$type];
+
+    if (!file_exists($file) || !is_writable($file)) {
+        wp_send_json_error('Ei voi kirjoittaa lokiin');
+    }
+
+    file_put_contents($file, '');
+
+    wp_send_json_success();
+});
+
 /* DOWNLOAD */
 
 add_action('admin_init', function () {
@@ -98,7 +127,7 @@ function inv2_render() {
     echo '<div class="inv2-grid">';
 
     echo inv2_log_card("Tilaukset → Snipe-IT", $s['cron_b_log'], "log_b");
-    echo inv2_log_card("Tuotteet → Verkkokauppa", $s['cron_c_log'], "log_c");
+    echo inv2_log_card("Snipe-IT → Verkkokauppa", $s['cron_c_log'], "log_c");
 
     echo '</div>';
 
@@ -186,6 +215,29 @@ function inv2_render() {
             navigator.clipboard.writeText(el.innerText);
         };
     });
+
+    document.querySelectorAll(".inv2-clear").forEach(btn=>{
+        btn.onclick = () => {
+
+            if (!confirm("Haluatko varmasti tyhjentää lokin?")) return;
+
+            const type = btn.dataset.type;
+
+            fetch(ajaxurl, {
+                method: "POST",
+                headers: {"Content-Type":"application/x-www-form-urlencoded"},
+                body: "action=inv2_clear_log&type=" + type
+            })
+            .then(r=>r.json())
+            .then(res=>{
+                if (res.success) {
+                    loadLogs();
+                } else {
+                    alert("Virhe: " + res.data);
+                }
+            });
+        };
+    });
     </script>';
 
     echo '</div>';
@@ -203,6 +255,7 @@ function inv2_log_card($title, $path, $id) {
         <div style="margin-bottom:8px;">
             <a class="button" href="'.$download.'">Lataa</a>
             <button class="button inv2-copy" data-target="'.$id.'">Kopioi</button>
+            <button class="button inv2-clear" data-type="'.($id === 'log_b' ? 'b' : 'c').'">Tyhjennä loki</button>
         </div>
         <div id="'.$id.'" class="inv2-log"></div>
     </div>';
