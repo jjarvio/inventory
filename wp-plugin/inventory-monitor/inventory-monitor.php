@@ -1,7 +1,9 @@
 <?php
 /**
- * Plugin Name: Inventory Monitor
+ * Plugin Name: Inventory monitor
+ * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
  * Version: 1.0.0
+ * Author: jjarvio
  */
 
 if (!defined('ABSPATH')) exit;
