@@ -1,25 +1,12 @@
-# Inventory 2.0
+# Inventory monitor & sync
 
 **Snipe-IT ↔ WooCommerce -integraatio cron-ajona**
 
-Inventory 2.0 on PHP-pohjainen integraatio, joka synkronoi Snipe-IT:n ja
+Inventory monitor & sync on PHP-pohjainen integraatio, joka synkronoi Snipe-IT:n ja
 WooCommercen dataa turvallisesti cron-ajojen kautta.
 
 -   **Cron B**: WooCommerce-tilaukset → vähennetään Snipe-IT-varastoa\
 -   **Cron C**: Snipe-IT consumables → päivitetään WooCommerce-tuotteet
-
-------------------------------------------------------------------------
-
-## Mitä tämä projekti on (ja ei ole)
-
--   Tämä repo on ensisijaisesti **CLI-ajoihin tarkoitettu
-    cron-integraatio**
--   Skriptit on suojattu web-ajolta (`php_sapi_name() !== 'cli'`)
--   Repossa on lisäksi **erillinen WP Admin -monitorointiplugin**
-    (`wp-plugin/inventory2-monitor`), jolla voi:
-    -   katsoa lokihistoriaa
-    -   ajaa Cron B/C käsin
-    -   tyhjentää lokit
 
 ------------------------------------------------------------------------
 
@@ -29,7 +16,7 @@ WooCommercen dataa turvallisesti cron-ajojen kautta.
     cron_b_orders_to_snipe.php
     cron_c_consumables_sync.php
     wp-plugin/
-    └── inventory2-monitor/
+    └── inventory-monitor/
         └── inventory2-monitor.php
     README.md
 
@@ -48,8 +35,7 @@ WooCommercen dataa turvallisesti cron-ajojen kautta.
 ### Tavoite
 
 -  Samaa tilausta ei käsitellä kahdesti
--  Jos Snipe checkout palauttaa 5xx-virheen, kyseinen tilaus merkitään manuaalitarkistukseen (`_snipe_sync_manual_review=yes`) eikä sitä yritetä automaattisesti uudelleen
--  Samassa ajossa loppujen tilausten käsittely keskeytetään (Snipe outage -suoja), jotta massana ei synny turhia manuaalitarkistuksia
+-  Vähentää Snipe-it saldoa tuotteen "jäljellä" kohdalta
 
 ------------------------------------------------------------------------
 
@@ -152,8 +138,8 @@ Polku:
 -   Cron B/C historiat WP Adminissa
 -   Virherivien poiminta
 -   Napit:
-    -   Aja Cron B nyt
-    -   Aja Cron C nyt
+    -   Aja tilausten synkronointi nyt
+    -   Aja varastosynkronointi nyt
     -   Tyhjennä lokit nyt
 -   Asetukset:
     -   PHP-binääri
