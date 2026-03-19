@@ -87,9 +87,9 @@ Tämä osio olettaa, että:
 Kirjaudu palvelimelle SSH:lla ja luo erillinen hakemisto cron-skripteille. Suositus on pitää ne **public_html**-hakemiston ulkopuolella.
 
 ```bash
-mkdir -p ~/cron/inventory2.0
-mkdir -p ~/cron/inventory2.0/logs
-chmod 755 ~/cron/inventory2.0/logs
+mkdir -p ~/cron
+mkdir -p ~/cron/logs
+chmod 755 ~/cron/logs
 ```
 
 Kopioi tämän repon tiedostot hakemistoon `~/cron/inventory2.0`.
@@ -97,7 +97,7 @@ Kopioi tämän repon tiedostot hakemistoon `~/cron/inventory2.0`.
 Suositeltu lopputulos:
 
 ```text
-/home/USER/cron/inventory2.0/
+/home/USER/cron/
 ├── bootstrap.php
 ├── cron_b_orders_to_snipe.php
 ├── cron_c_consumables_sync.php
@@ -199,7 +199,7 @@ Käytännössä tämä tarkoittaa:
 Luo projektihakemistoon tiedosto `.env`:
 
 ```bash
-nano ~/cron/inventory2.0/.env
+nano ~/cron/.env
 ```
 
 Lisää sisältö esimerkiksi näin:
@@ -265,7 +265,7 @@ Käytä samaa polkua cron-ajastuksessa.
 Suorita ensin skriptit käsin projektihakemistosta:
 
 ```bash
-cd ~/cron/inventory2.0
+cd ~/cron
 php cron_b_orders_to_snipe.php
 php cron_c_consumables_sync.php
 ```
@@ -292,8 +292,8 @@ crontab -e
 Lisää esimerkiksi:
 
 ```cron
-*/5 * * * * /usr/local/bin/php /home/USER/cron/inventory2.0/cron_b_orders_to_snipe.php >> /home/USER/cron/inventory2.0/logs/cron_b_runner.log 2>&1
-*/10 * * * * /usr/local/bin/php /home/USER/cron/inventory2.0/cron_c_consumables_sync.php >> /home/USER/cron/inventory2.0/logs/cron_c_runner.log 2>&1
+*/5 * * * * /usr/local/bin/php /home/USER/cron/cron_b_orders_to_snipe.php >> /home/USER/cron/inventory2.0/logs/cron_b_runner.log 2>&1
+*/10 * * * * /usr/local/bin/php /home/USER/cron/cron_c_consumables_sync.php >> /home/USER/cron/inventory2.0/logs/cron_c_runner.log 2>&1
 ```
 
 #### Esimerkki cPanel Cron Jobs -näkymään
@@ -301,13 +301,13 @@ Lisää esimerkiksi:
 - **Cron B** komento:
 
 ```bash
-/usr/local/bin/php /home/USER/cron/inventory2.0/cron_b_orders_to_snipe.php >> /home/USER/cron/inventory2.0/logs/cron_b_runner.log 2>&1
+/usr/local/bin/php /home/USER/cron/cron_b_orders_to_snipe.php >> /home/USER/cron/logs/cron_b_runner.log 2>&1
 ```
 
 - **Cron C** komento:
 
 ```bash
-/usr/local/bin/php /home/USER/cron/inventory2.0/cron_c_consumables_sync.php >> /home/USER/cron/inventory2.0/logs/cron_c_runner.log 2>&1
+/usr/local/bin/php /home/USER/cron/cron_c_consumables_sync.php >> /home/USER/cron/logs/cron_c_runner.log 2>&1
 ```
 
 #### Suositellut ajovälit
@@ -326,7 +326,7 @@ Tässä kohdassa oletetaan, että `.env` on jo kunnossa ja skriptit löytyvät p
 Aja skriptit käsin:
 
 ```bash
-cd ~/cron/inventory2.0
+cd ~/cron
 php cron_b_orders_to_snipe.php
 php cron_c_consumables_sync.php
 ```
@@ -336,8 +336,8 @@ Tarkista, että komennot päättyvät ilman PHP fatal error -virheitä.
 ### Testi 2: tarkista, että lokit syntyvät
 
 ```bash
-tail -n 50 ~/cron/inventory2.0/logs/cron_b_orders.log
-tail -n 50 ~/cron/inventory2.0/logs/cron_c_consumables.log
+tail -n 50 ~/cron/logs/cron_b_orders.log
+tail -n 50 ~/cron/logs/cron_c_consumables.log
 ```
 
 Odotettu tulos:
@@ -358,7 +358,7 @@ snipe-consumable-123
 3. Aja Cron B käsin:
 
 ```bash
-cd ~/cron/inventory2.0
+cd ~/cron
 php cron_b_orders_to_snipe.php
 ```
 
@@ -378,7 +378,7 @@ Jos ajo epäonnistuu, tarkista erityisesti:
 Aja Cron B toisen kerran heti perään:
 
 ```bash
-cd ~/cron/inventory2.0
+cd ~/cron
 php cron_b_orders_to_snipe.php
 ```
 
@@ -396,7 +396,7 @@ Odotettu tulos:
 2. Aja Cron C käsin:
 
 ```bash
-cd ~/cron/inventory2.0
+cd ~/cron
 php cron_c_consumables_sync.php
 ```
 
@@ -416,7 +416,7 @@ Voit testata Cron C:n piilotuslogiikkaa kahdella tavalla:
 Aja sen jälkeen:
 
 ```bash
-cd ~/cron/inventory2.0
+cd ~/cron
 php cron_c_consumables_sync.php
 ```
 
@@ -430,8 +430,8 @@ Kun käsiajo toimii, varmista vielä että myös cron ajaa skriptit:
 
 ```bash
 crontab -l
-tail -n 100 ~/cron/inventory2.0/logs/cron_b_runner.log
-tail -n 100 ~/cron/inventory2.0/logs/cron_c_runner.log
+tail -n 100 ~/cron/logs/cron_b_runner.log
+tail -n 100 ~/cron/logs/cron_c_runner.log
 ```
 
 Odotettu tulos:
@@ -498,14 +498,14 @@ Syy:
 Ratkaisu:
 
 ```bash
-mkdir -p ~/cron/inventory2.0/logs
-chmod 755 ~/cron/inventory2.0/logs
+mkdir -p ~/cron/logs
+chmod 755 ~/cron/logs
 ```
 
 Tarvittaessa tarkista myös tiedostojen omistaja:
 
 ```bash
-ls -ld ~/cron/inventory2.0/logs
+ls -ld ~/cron/logs
 ```
 
 ### Cron toimii käsin mutta ei ajastettuna
