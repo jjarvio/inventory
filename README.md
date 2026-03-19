@@ -259,13 +259,11 @@ Kun testaus on valmis, voit palauttaa arvot takaisin `false`-tilaan.
 
 ### 7. Lisää cron-ajot
 
-#### Esimerkki perinteiseen crontabiin
+#### Esimerkki cpanel
 
-Avaa käyttäjän crontab:
+- Etsi cpanelin hakutoiminnolla cron tehtävät
 
-```bash
-crontab -e
-```
+
 
 Lisää esimerkiksi:
 
