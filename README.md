@@ -64,6 +64,22 @@ Cron C käyttää **supplier-pohjaista suodatusta**:
     supplier-listasta (`hide_products_not_in_active_list`)
 
 ------------------------------------------------------------------------
+## Asennus
+
+- Kirjaudu palvelimelle käyttäen SSH-yhteyttä
+- Luo cron-kansio kotihakemistoosi ( public_html ulkopuolelle turvallisuuden vuoksi)
+- Kopioi tämän repon tiedostot luomaasi cron kansioon
+- Luo lokihakemistot cron kansion sisälle
+
+```
+mkdir -p ~/cron/logs
+chmod 755 ~/cron/logs
+```
+- Luo .env
+
+```
+nano ~/cron/.env
+```
 
 ## Ympäristömuuttujat (.env)
 
