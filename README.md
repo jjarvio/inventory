@@ -92,7 +92,7 @@ mkdir -p ~/cron/logs
 chmod 755 ~/cron/logs
 ```
 
-Kopioi tämän repon tiedostot hakemistoon `~/cron/inventory2.0`.
+Kopioi tämän repon tiedostot hakemistoon `~/cron`.
 
 Suositeltu lopputulos:
 
@@ -106,9 +106,40 @@ Suositeltu lopputulos:
 └── logs/
 ```
 
-> Vinkki: varmista, että skriptit ajetaan samasta hakemistosta, jossa myös `.env` sijaitsee.
+> varmista, että skriptit ajetaan samasta hakemistosta, jossa myös `.env` sijaitsee.
 
-### 2. Luo WooCommerce REST API -avaimet
+### 2. Luo `.env`-tiedosto
+
+Luo projektihakemistoon tiedosto `.env`:
+
+```bash
+nano ~/cron/.env
+```
+
+Lisää sisältö esimerkiksi näin:
+
+```env
+# WooCommerce
+WOO_URL=https://kauppa.example.fi
+WOO_CONSUMER_KEY=ck_xxx
+WOO_CONSUMER_SECRET=cs_xxx
+
+# Snipe-IT
+SNIPE_BASE_URL=https://snipe.example.fi
+SNIPE_API_TOKEN=xxxxxxxx
+SNIPE_LOCATION_ID=
+SNIPE_SOLD_ASSET_ID=
+
+# Yleiset
+LOG_PATH=/home/USER/cron/inventory2.0/logs
+SALE_SUPPLIER_NAME=Myynnissä
+
+# Debug (optional)
+CRON_B_DEBUG=false
+CRON_C_DEBUG=false
+```
+
+### 3. Luo WooCommerce REST API -avaimet
 
 Cron B ja Cron C käyttävät WooCommercen REST APIa tilausten, tuotteiden ja kategorioiden lukemiseen sekä päivittämiseen.
 
@@ -122,7 +153,7 @@ Cron B ja Cron C käyttävät WooCommercen REST APIa tilausten, tuotteiden ja ka
    - **User**: admin-käyttäjä tai tekninen integraatiokäyttäjä
    - **Permissions**: `Read/Write`
 5. Luo avain.
-6. Tallenna talteen:
+6. Liitä nämä .env tiedostotoon niille kuuluville paikoille:
    - `Consumer key` → käytetään muuttujassa `WOO_CONSUMER_KEY`
    - `Consumer secret` → käytetään muuttujassa `WOO_CONSUMER_SECRET`
 
@@ -151,34 +182,9 @@ Tämä arvo tallennetaan `.env`-tiedostoon muuttujaan:
 SNIPE_API_TOKEN=xxxxxxxx
 ```
 
-> Suositus: luo integraatiolle oma tekninen käyttäjä tai vähintään oma erillinen API-avain, jotta avaimen voi myöhemmin vaihtaa rikkomatta muuta käyttöä.
 
-### 4. Selvitä Snipe-IT location ID Cron B:tä varten
 
-Cron B tarvitsee ympäristömuuttujan `SNIPE_LOCATION_ID`, koska checkout tehdään tiettyyn Snipe-IT locationiin.
-
-Voit hakea tämän kahdella tavalla:
-
-#### Vaihtoehto A: käyttöliittymästä
-
-- Avaa Snipe-IT:ssä **Locations**
-- Etsi location, jota haluat käyttää checkouteissa
-- Tarkista locationin ID käyttöliittymästä tai URL:sta
-
-#### Vaihtoehto B: APIlla
-
-Kun API token on luotu, voit testata location-listan esimerkiksi näin:
-
-```bash
-curl -s \
-  -H "Authorization: Bearer YOUR_SNIPE_TOKEN" \
-  -H "Accept: application/json" \
-  https://snipe.example.fi/api/v1/locations
-```
-
-Etsi vastauksesta oikea location ID ja aseta se `.env`-tiedostoon.
-
-### 5. Varmista supplier-nimi tuotteille, joiden halutaan näkyvän WooCommercessa
+### 4. Varmista supplier-nimi tuotteille, joiden halutaan näkyvän WooCommercessa
 
 Cron C tuo WooCommerceen vain ne Snipe-IT consumablet, joiden supplier vastaa `.env`-tiedoston arvoa `SALE_SUPPLIER_NAME`.
 
@@ -194,35 +200,7 @@ Käytännössä tämä tarkoittaa:
 - Supplierin nimen pitää olla täsmälleen sama kuin `.env`-tiedostossa
 - Jos supplier vaihtuu tai tuotetta ei enää löydy hausta, Cron C voi piilottaa tuotteen WooCommercessa
 
-### 6. Luo `.env`-tiedosto
 
-Luo projektihakemistoon tiedosto `.env`:
-
-```bash
-nano ~/cron/.env
-```
-
-Lisää sisältö esimerkiksi näin:
-
-```env
-# WooCommerce
-WOO_URL=https://kauppa.example.fi
-WOO_CONSUMER_KEY=ck_xxx
-WOO_CONSUMER_SECRET=cs_xxx
-
-# Snipe-IT
-SNIPE_BASE_URL=https://snipe.example.fi
-SNIPE_API_TOKEN=xxxxxxxx
-SNIPE_LOCATION_ID=1
-
-# Yleiset
-LOG_PATH=/home/USER/cron/inventory2.0/logs
-SALE_SUPPLIER_NAME=Myynnissä
-
-# Debug (optional)
-CRON_B_DEBUG=false
-CRON_C_DEBUG=false
-```
 
 #### Muuttujien selitykset
 
@@ -243,7 +221,7 @@ CRON_C_DEBUG=false
 - `LOG_PATH`-hakemiston on oltava kirjoitettavissa sillä käyttäjällä, jolla cron ajetaan
 - `.env`-tiedoston on sijaittava samassa hakemistossa kuin `bootstrap.php` ja cron-skriptit
 
-### 7. Tarkista PHP CLI -polku
+### 5. Tarkista PHP CLI -polku
 
 Selvitä, mikä PHP-binääri palvelimellasi on käytössä:
 
@@ -260,7 +238,7 @@ Yleisiä esimerkkejä:
 
 Käytä samaa polkua cron-ajastuksessa.
 
-### 8. Testaa yhteydet manuaalisesti ennen cronin aktivointia
+### 6. Testaa yhteydet manuaalisesti ennen cronin aktivointia
 
 Suorita ensin skriptit käsin projektihakemistosta:
 
@@ -279,7 +257,7 @@ CRON_C_DEBUG=true
 
 Kun testaus on valmis, voit palauttaa arvot takaisin `false`-tilaan.
 
-### 9. Lisää cron-ajot
+### 7. Lisää cron-ajot
 
 #### Esimerkki perinteiseen crontabiin
 
