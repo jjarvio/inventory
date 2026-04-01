@@ -22,8 +22,9 @@ $WOO_BASE_URL        = rtrim(getenv('WOO_URL'), '/');
 $WOO_CONSUMER_KEY    = getenv('WOO_CONSUMER_KEY');
 $WOO_CONSUMER_SECRET = getenv('WOO_CONSUMER_SECRET');
 
-$SALE_SUPPLIER_NAME = strtolower(
-    getenv('SALE_SUPPLIER_NAME') ?: 'myynnissä'
+$SALE_SUPPLIER_NAME = mb_strtolower(
+    getenv('SALE_SUPPLIER_NAME') ?: 'myynnissä',
+    'UTF-8'
 );
 
 $LOG_FILE = rtrim(getenv('LOG_PATH'), '/') . '/cron_c_consumables.log';
@@ -124,7 +125,7 @@ function consumable_is_for_sale(array $c): bool {
         return false;
     }
 
-    return strtolower(trim($c['supplier']['name'])) === $SALE_SUPPLIER_NAME;
+    return mb_strtolower(trim($c['supplier']['name']), 'UTF-8') === $SALE_SUPPLIER_NAME;
 }
 
 // IMAGE NORMALIZATION
@@ -328,7 +329,7 @@ while (true) {
         $qty      = (int)($c['remaining'] ?? 0);
         $category = (string)($c['category']['name'] ?? '');
         $sku      = "snipe-consumable-$id";
-        $description = (string)($c['notes'] ?? '');
+        $description = trim((string)($c['notes'] ?? ''));
 
         if (!$id || $name === '') continue;
 
@@ -388,6 +389,8 @@ while (true) {
             'status'             => $visible ? 'publish' : 'private',
             'catalog_visibility' => $visible ? 'visible' : 'hidden',
             'categories'         => $categoriesPayload,
+            'description'       => $description,
+            'short_description' => $description,
             'meta_data' => [
                 ['key' => '_snipeit_consumable_id',    'value' => $id],
                 ['key' => '_snipe_has_been_published', 'value' => $hasBeenPublished ? 'yes' : 'no'],
@@ -395,11 +398,7 @@ while (true) {
                 ['key' => '_snipeit_supplier',         'value' => $c['supplier']['name'] ?? ''],
             ],
         ];
-        
-        if (!empty($description)) {
-            $payload['description'] = $description;
-            $payload['short_description'] = $description;
-}
+
         if ($imageUrl && (!$woo || empty($woo['images']))) {
             log_line("IMAGE set for $name");
             $payload['images'] = [['src' => $imageUrl]];
