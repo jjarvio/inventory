@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Inventory monitor
- * Description: Näyttää Inventoryn cron-ajojen historian, virheet ja mahdollistaa Cron B/C manuaalisen ajon.
- * Version: 1.0.0
+ * Description: Näyttää cron-ajojen älykkään yhteenvedon. Raakalokit, suodattimet ja asetukset.
+ * Version: 1.4
  * Author: jjarvio
  */
 
@@ -14,11 +14,11 @@ const INV2_OPTION_KEY = 'inv2_monitor_settings';
 
 function inv2_default_settings() {
     return [
-        'php_binary' => '/usr/local/bin/php',
+        'php_binary'    => '/usr/local/bin/php',
         'cron_b_script' => '/home/USER/cron/cron_b_orders_to_snipe.php',
         'cron_c_script' => '/home/USER/cron/cron_c_consumables_sync.php',
-        'cron_b_log' => '/home/USER/cron/logs/cron_b_orders.log',
-        'cron_c_log' => '/home/USER/cron/logs/cron_c_consumables.log',
+        'cron_b_log'    => '/home/USER/cron/logs/cron_b_orders.log',
+        'cron_c_log'    => '/home/USER/cron/logs/cron_c_consumables.log',
     ];
 }
 
@@ -27,28 +27,46 @@ function inv2_get_settings() {
 }
 
 add_action('admin_menu', function () {
-    add_menu_page('Inventory Monitor','Inventory Monitor','manage_options','inv2-monitor','inv2_render','dashicons-database');
+    add_menu_page('Inventory Monitor', 'Inventory Monitor', 'manage_options', 'inv2-monitor', 'inv2_render', 'dashicons-database');
 });
 
 add_action('admin_init', function () {
     register_setting('inv2_monitor', INV2_OPTION_KEY);
 });
 
-/* CRON RUNNER */
+/* AJAX RUN SCRIPT (Tausta-ajo) */
 
-function inv2_run($script, $php) {
-    exec(escapeshellcmd("$php $script 2>&1"), $out, $code);
-    return ['ok'=>$code===0,'output'=>implode("\n",$out)];
-}
+add_action('wp_ajax_inv2_run_script', function () {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    if (!check_ajax_referer('inv2_ajax_action', 'nonce', false)) wp_send_json_error('Invalid nonce');
+
+    $type = $_POST['type'] ?? '';
+    $s = inv2_get_settings();
+    $script = ($type === 'b') ? $s['cron_b_script'] : (($type === 'c') ? $s['cron_c_script'] : null);
+
+    if (!$script || !file_exists($script)) wp_send_json_error('Skriptiä ei löydy.');
+
+    $php_safe = escapeshellarg($s['php_binary']);
+    $script_safe = escapeshellarg($script);
+
+    exec("$php_safe $script_safe > /dev/null 2>&1 &");
+    wp_send_json_success();
+});
 
 /* AJAX LOG FETCH */
 
 add_action('wp_ajax_inv2_fetch_logs', function () {
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+
+    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
+    $limit = max(1, min($limit, 1000));
     $s = inv2_get_settings();
 
-    $read = function($file) {
+    $read = function($file) use ($limit) {
         if (!file_exists($file)) return [];
-        return array_slice(file($file), -400);
+        $output = shell_exec('tail -n ' . $limit . ' ' . escapeshellarg($file));
+        if (!$output) return [];
+        return explode("\n", rtrim($output));
     };
 
     wp_send_json([
@@ -57,208 +75,353 @@ add_action('wp_ajax_inv2_fetch_logs', function () {
     ]);
 });
 
-/* AJAX CLEAR LOG */
+/* AJAX CLEAR LOG & DOWNLOAD */
 
 add_action('wp_ajax_inv2_clear_log', function () {
-
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Unauthorized');
-    }
-
+    if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
+    if (!check_ajax_referer('inv2_ajax_action', 'nonce', false)) wp_send_json_error('Invalid nonce');
     $type = $_POST['type'] ?? '';
     $s = inv2_get_settings();
-
-    $map = [
-        'b' => $s['cron_b_log'],
-        'c' => $s['cron_c_log']
-    ];
-
-    if (!isset($map[$type])) {
-        wp_send_json_error('Invalid type');
-    }
-
+    $map = ['b' => $s['cron_b_log'], 'c' => $s['cron_c_log']];
+    if (!isset($map[$type])) wp_send_json_error('Invalid type');
     $file = $map[$type];
-
-    if (!file_exists($file) || !is_writable($file)) {
-        wp_send_json_error('Ei voi kirjoittaa lokiin');
-    }
-
+    if (!file_exists($file) || !is_writable($file)) wp_send_json_error('Ei voi kirjoittaa lokiin');
     file_put_contents($file, '');
-
     wp_send_json_success();
 });
 
-/* DOWNLOAD */
-
 add_action('admin_init', function () {
     if (!isset($_GET['inv2_download'])) return;
-
+    if (!current_user_can('manage_options')) wp_die('Luvaton pääsy');
     $file = urldecode($_GET['inv2_download']);
-    if (!file_exists($file)) wp_die('Loki puuttuu');
-
+    $s = inv2_get_settings();
+    if ($file !== $s['cron_b_log'] && $file !== $s['cron_c_log']) wp_die('Kielletty polku.');
     header('Content-Type:text/plain');
     header('Content-Disposition:attachment; filename="'.basename($file).'"');
     readfile($file);
     exit;
 });
 
-/* UI */
+/* UI RENDER */
 
 function inv2_render() {
-
     $s = inv2_get_settings();
-    $res = null;
-
-    if (isset($_POST['run_b'])) $res = inv2_run($s['cron_b_script'],$s['php_binary']);
-    if (isset($_POST['run_c'])) $res = inv2_run($s['cron_c_script'],$s['php_binary']);
 
     echo '<div class="wrap inv2-wrap">';
-
     echo '<h1 style="margin-bottom:20px;">Inventory Monitor</h1>';
 
-    /* RESULT */
-    if ($res) {
-        echo '<div class="inv2-alert '.($res['ok']?'ok':'err').'">';
-        echo '<strong>'.($res['ok']?'Suoritus onnistui':'Suoritus epäonnistui').'</strong><br>';
-        echo nl2br(esc_html($res['output']));
-        echo '</div>';
-    }
-
-
-    /* LOGS */
+    /* 1. LATEST RUNS JA PIKATOIMINNOT (YHTENÄINEN KORTTI AINA NÄKYVISSÄ) */
+    echo '<div class="inv2-card" style="margin-bottom: 25px;">';
+    
+    // Yhteenvedot
     echo '<div class="inv2-grid">';
-
-    echo inv2_log_card("Tilaukset → Snipe-IT", $s['cron_b_log'], "log_b");
-    echo inv2_log_card("Snipe-IT → Verkkokauppa", $s['cron_c_log'], "log_c");
-
+    echo '<div id="latest_b" class="inv2-log-column" style="padding-left: 12px; border-left: 4px solid #0ea5e9;">Ladataan viimeisimmän ajon tietoja...</div>';
+    echo '<div id="latest_c" class="inv2-log-column" style="padding-left: 12px; border-left: 4px solid #0ea5e9;">Ladataan viimeisimmän ajon tietoja...</div>';
     echo '</div>';
 
-    /* TOOLBAR */
-    echo '<h3 style="margin-bottom:6px;">Toiminnot ja suodatus</h3>';
+    // Erotinviiva
+    echo '<hr style="margin: 20px 0 15px 0; border: 0; border-top: 1px solid #e2e4e7;">';
 
-    echo '<div class="inv2-toolbar" style="margin:20px 0;">';
+    // Toimintonapit
+    echo '<div class="inv2-toolbar">';
+    echo '<button class="button button-primary inv2-run-btn" data-type="b">Aja tilaukset nyt</button>';
+    echo '<button class="button button-primary inv2-run-btn" data-type="c">Aja tuotteet nyt</button>';
+    echo '</div>';
+    
+    echo '</div>'; // Sulkee inv2-card
 
-    echo '<form method="post"><button class="button button-primary" name="run_b">Aja tilausten synkronointi nyt</button></form>';
-    echo '<form method="post"><button class="button button-primary" name="run_c">Aja tuotteet verkkokauppaan</button></form>';
+    /* 2. MAIN LOGS JA SUODATUS (YHTENÄINEN KORTTI) */
+    echo '<div class="inv2-card" style="padding: 0; margin-bottom: 25px;">';
+    
+    echo '<div class="inv2-accordion-header" data-target="inv2-logs-container">';
+    echo '<h2 style="margin:0; font-size:16px;">Tarkastele koko raakalokia <span class="inv2-arrow">▼</span></h2>';
+    echo '</div>';
+    
+    echo '<div id="inv2-logs-container" style="display: none; padding: 0 15px 15px 15px; border-top: 1px solid #e2e4e7;">';
+    
+    echo '<div class="inv2-grid" style="margin-top: 15px;">';
+    echo inv2_log_card("Koko Loki: Tilaukset → Snipe-IT", $s['cron_b_log'], "log_b");
+    echo inv2_log_card("Koko Loki: Snipe-IT → Verkkokauppa", $s['cron_c_log'], "log_c");
+    echo '</div>';
 
-    echo '<input type="text" id="inv2-search" placeholder="Hae lokista...">';
+    echo '<hr style="margin: 20px 0 15px 0; border: 0; border-top: 1px solid #e2e4e7;">';
+
+    echo '<div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">';
+    echo '<strong style="margin-right: 5px;">Suodatus:</strong>';
+    echo '<span>Rivimäärä: <select id="inv2-limit" style="margin-left: 5px;">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+            <option value="1000">1000</option>
+          </select></span>';
+    echo '<input type="text" id="inv2-search" placeholder="Hae raakalokista...">';
     echo '<label><input type="checkbox" id="inv2-errors"> Vain virheet</label>';
-
     echo '</div>';
 
-    /* SETTINGS */
-    echo '<div class="inv2-card" style="margin-top:30px;">';
-    echo '<h2>Asetukset</h2>';
+    echo '</div>'; // Sulkee inv2-logs-container
+    echo '</div>'; // Sulkee inv2-card
 
-    echo '<form method="post" action="options.php">';
+    /* 3. SETTINGS (YHTENÄINEN KORTTI) */
+    echo '<div class="inv2-card" style="padding: 0; margin-bottom: 25px;">';
+    
+    echo '<div class="inv2-accordion-header" data-target="inv2-settings-container">';
+    echo '<h2 style="margin:0; font-size:16px;">Asetukset <span class="inv2-arrow">▼</span></h2>';
+    echo '</div>';
+
+    echo '<div id="inv2-settings-container" style="display: none; padding: 0 15px 15px 15px; border-top: 1px solid #e2e4e7;">';
+    echo '<form method="post" action="options.php" style="margin-top: 15px;">';
     settings_fields('inv2_monitor');
-
-    foreach ($s as $k=>$v) {
-        echo '<p><strong>'.$k.'</strong><br>';
-        echo '<input class="regular-text code" name="'.INV2_OPTION_KEY.'['.$k.']" value="'.esc_attr($v).'"></p>';
+    foreach ($s as $k => $v) {
+        echo '<p><strong>'.$k.'</strong><br><input class="regular-text code" name="'.INV2_OPTION_KEY.'['.$k.']" value="'.esc_attr($v).'"></p>';
     }
-
     submit_button();
-    echo '</form></div>';
+    echo '</form>';
+    echo '</div>'; // Sulkee inv2-settings-container
+    
+    echo '</div>'; // Sulkee inv2-card
 
     /* STYLES */
     echo '<style>
-    .inv2-toolbar {display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px;align-items:center;}
+    .inv2-toolbar {display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
     .inv2-grid {display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-    .inv2-card {background:#fff;border:1px solid #ccd0d4;border-radius:8px;padding:12px;}
-    .inv2-log {background:#0d1117;color:#e6edf3;padding:10px;height:320px;overflow:auto;font-family:monospace;border-radius:6px;}
-    .inv2-alert {padding:12px;border-radius:6px;margin-bottom:15px;}
-    .inv2-alert.ok {background:#d1e7dd;}
-    .inv2-alert.err {background:#f8d7da;}
+    .inv2-card {background:#fff;border:1px solid #ccd0d4;border-radius:8px;padding:15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);}
+    
+    .inv2-log-column { display: flex; flex-direction: column; }
+    
+    .inv2-accordion-header {
+        padding: 15px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; 
+        align-items: center; background: transparent; transition: background 0.2s; user-select: none;
+    }
+    .inv2-accordion-header:hover { background: #f9fafb; }
+    .inv2-accordion-header.is-open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+    
+    .inv2-arrow { font-size: 12px; color: #6b7280; transition: transform 0.3s ease; }
+    .inv2-accordion-header.is-open .inv2-arrow { transform: rotate(180deg); color: #2271b1; }
+
+    .inv2-log {
+        background:#0d1117; color:#e6edf3; padding:10px; height:320px; overflow-y:auto; 
+        font-family:monospace; border-radius:6px; white-space: pre-wrap; font-size: 13px;
+        display: flex; flex-direction: column-reverse;
+    }
+    
+    @keyframes inv2-spin { 100% { transform: rotate(360deg); } }
+    .inv2-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-weight:bold; font-size:11px; border: 1px solid transparent; }
+    .inv2-badge-blue { background:#f0f9ff; color:#0369a1; border-color: #bae6fd; }
+    .inv2-badge-gray { background:#f9fafb; color:#4b5563; border-color: #e5e7eb; }
+    .inv2-badge-red { background:#fef2f2; color:#b91c1c; border-color: #fecaca; }
     </style>';
+
+    $ajax_nonce = wp_create_nonce('inv2_ajax_action');
 
     /* JS */
     echo '<script>
+    const inv2_ajax_nonce = "'.esc_js($ajax_nonce).'";
     const isError = l => /error|fatal|exception|failed/i.test(l);
 
+    // ACCORDION LOGIIKKA
+    document.querySelectorAll(".inv2-accordion-header").forEach(header => {
+        header.addEventListener("click", () => {
+            const targetId = header.getAttribute("data-target");
+            const targetEl = document.getElementById(targetId);
+            const isOpen = header.classList.contains("is-open");
+            
+            if (isOpen) {
+                targetEl.style.display = "none";
+                header.classList.remove("is-open");
+            } else {
+                targetEl.style.display = "block";
+                header.classList.add("is-open");
+            }
+        });
+    });
+
+    // KÄSITTELEE KOKO LOKIN PIIRTÄMISEN
     function render(id, lines) {
         const search = document.getElementById("inv2-search").value.toLowerCase();
         const errors = document.getElementById("inv2-errors").checked;
-
+        const el = document.getElementById(id);
         let html = "";
+        const filteredLines = [];
 
-        lines.forEach(l=>{
+        lines.forEach(l => {
             if (search && !l.toLowerCase().includes(search)) return;
             if (errors && !isError(l)) return;
-
-            let color="#e6edf3";
-            if (isError(l)) color="#ff6b6b";
-            if (/debug/i.test(l)) color="#888";
-
-            html += `<div style="color:${color}">${l}</div>`;
+            filteredLines.push(l);
         });
 
-        document.getElementById(id).innerHTML = html;
+        filteredLines.reverse().forEach(l => {
+            let color = isError(l) ? "#ff6b6b" : (/debug/i.test(l) ? "#888" : "#e6edf3");
+            const safeText = l.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            html += `<div style="color:${color}">${safeText}</div>`;
+        });
+
+        if (el.innerHTML !== html) el.innerHTML = html;
+    }
+
+    // ÄLYKÄS KÄSITTELIJÄ VIIMEISIMMÄLLE AJOLLE
+    function renderLatest(id, logId, type, lines, title, startMarker, endMarker) {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        let status = "unknown";
+        let runLines = [];
+        let startIndex = -1;
+        let endIndex = -1;
+
+        for (let i = lines.length - 1; i >= 0; i--) {
+            if (lines[i].includes(endMarker)) {
+                endIndex = i; status = "completed"; break;
+            } else if (lines[i].includes(startMarker)) {
+                startIndex = i; status = "running"; break;
+            }
+        }
+
+        if (status === "completed") {
+            for (let j = endIndex; j >= 0; j--) {
+                if (lines[j].includes(startMarker)) { startIndex = j; break; }
+            }
+            if (startIndex !== -1) {
+                runLines = lines.slice(startIndex, endIndex + 1);
+            } else {
+                runLines = lines.slice(0, endIndex + 1); 
+            }
+        } else if (status === "running") {
+            runLines = lines.slice(startIndex);
+        }
+
+        let html = `<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+                        <h3 style="margin:0; font-size:15px; color:#1d2327;">${title}</h3>
+                        <div>
+                            <button class="button button-small inv2-copy" data-target="mini_${logId}">Kopioi</button>
+                            <button class="button button-small inv2-clear" data-type="${type}">Tyhjennä</button>
+                        </div>
+                    </div>`;
+
+        if (status === "running") {
+            html += `<div style="color: #0284c7; font-weight: bold; margin-bottom: 12px; display:flex; align-items:center; gap:8px;">
+                        <span style="display:inline-block; animation: inv2-spin 2s linear infinite; font-size: 16px;">⏳</span> Ajo on parhaillaan käynnissä...
+                     </div>`;
+        } else if (status === "completed") {
+            const match = runLines[runLines.length - 1]?.match(/\[(.*?)\]/);
+            const time = match ? match[1] : "Tuntematon aika";
+            html += `<div style="color: #10b981; font-weight: bold; margin-bottom: 12px;">
+                        ✅ Viimeisin ajo päättyi: ${time}
+                     </div>`;
+        } else {
+            html += `<div style="color: #6b7280; font-style: italic; margin-bottom: 12px;">Ei tietoa aiemmista ajoista valituilla riveillä.</div>`;
+        }
+
+        if (runLines.length > 0) {
+            let updates = 0, skips = 0, errors = 0;
+            runLines.forEach(l => {
+                if (/UPDATE|CREATE|HIDE/i.test(l)) updates++;
+                if (/skip/i.test(l)) skips++;
+                if (isError(l)) errors++;
+            });
+
+            html += `<div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <span class="inv2-badge inv2-badge-blue">Muutettu/Käsitelty: ${updates} kpl</span>
+                        <span class="inv2-badge inv2-badge-gray">Ohitettu: ${skips} kpl</span>
+                        <span class="inv2-badge ${errors > 0 ? "inv2-badge-red" : "inv2-badge-gray"}">Virheet: ${errors} kpl</span>
+                     </div>`;
+
+            let logHtml = [...runLines].reverse().map(l => {
+                let c = isError(l) ? "#ff6b6b" : (/skip|debug/i.test(l) ? "#888" : "#e6edf3");
+                return `<div style="color:${c}">${l.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`;
+            }).join("");
+
+            html += `<div id="mini_${logId}" class="inv2-log" style="height: 320px; padding:8px; font-size:13px; border:1px solid #30363d;">${logHtml}</div>`;
+        }
+
+        if (el.innerHTML !== html) {
+            el.innerHTML = html;
+            attachButtonEvents(el);
+        }
     }
 
     function loadLogs() {
-        fetch(ajaxurl + "?action=inv2_fetch_logs")
-        .then(r=>r.json())
-        .then(d=>{
-            render("log_b", d.b);
-            render("log_c", d.c);
+        const limit = document.getElementById("inv2-limit").value;
+
+        fetch(ajaxurl + "?action=inv2_fetch_logs&limit=" + limit)
+        .then(r => r.json())
+        .then(d => {
+            if(d.success === false) return;
+            
+            // Viimeisin ajo
+            renderLatest("latest_b", "log_b", "b", d.b || [], "Yhteenveto: Tilaukset → Snipe-IT", "Cron B Orders START", "Cron B Orders END");
+            renderLatest("latest_c", "log_c", "c", d.c || [], "Yhteenveto: Snipe-IT → Verkkokauppa", "Cron C Consumables START", "Cron C Consumables END");
+
+            // Raakalokit
+            render("log_b", d.b || []);
+            render("log_c", d.c || []);
         });
     }
 
     setInterval(loadLogs, 5000);
     loadLogs();
 
+    document.getElementById("inv2-limit").onchange = loadLogs;
     document.getElementById("inv2-search").oninput = loadLogs;
     document.getElementById("inv2-errors").onchange = loadLogs;
 
-    document.querySelectorAll(".inv2-copy").forEach(btn=>{
-        btn.onclick=()=>{
-            const el=document.getElementById(btn.dataset.target);
-            navigator.clipboard.writeText(el.innerText);
-        };
-    });
-
-    document.querySelectorAll(".inv2-clear").forEach(btn=>{
+    document.querySelectorAll(".inv2-run-btn").forEach(btn => {
         btn.onclick = () => {
-
-            if (!confirm("Haluatko varmasti tyhjentää lokin?")) return;
-
             const type = btn.dataset.type;
+            const origText = btn.innerText;
+            btn.innerText = "Käynnistetään...";
+            btn.disabled = true;
 
             fetch(ajaxurl, {
                 method: "POST",
                 headers: {"Content-Type":"application/x-www-form-urlencoded"},
-                body: "action=inv2_clear_log&type=" + type
+                body: "action=inv2_run_script&nonce=" + inv2_ajax_nonce + "&type=" + type
             })
-            .then(r=>r.json())
-            .then(res=>{
+            .then(r => r.json())
+            .then(res => {
                 if (res.success) {
-                    loadLogs();
+                    btn.innerText = "Ajo käynnissä taustalla!";
+                    setTimeout(loadLogs, 1000); 
+                    setTimeout(() => { btn.innerText = origText; btn.disabled = false; }, 3000);
                 } else {
                     alert("Virhe: " + res.data);
+                    btn.innerText = origText; btn.disabled = false;
                 }
             });
         };
     });
-    </script>';
 
-    echo '</div>';
+    function attachButtonEvents(container) {
+        container.querySelectorAll(".inv2-copy").forEach(btn => {
+            btn.onclick = () => {
+                const el = document.getElementById(btn.dataset.target);
+                if(!el) return;
+                const text = Array.from(el.children).map(c => c.innerText).reverse().join("\\n");
+                navigator.clipboard.writeText(text).then(() => {
+                    const o = btn.innerText; btn.innerText = "Kopioitu!";
+                    setTimeout(() => btn.innerText = o, 2000);
+                });
+            };
+        });
+
+        container.querySelectorAll(".inv2-clear").forEach(btn => {
+            btn.onclick = () => {
+                if (!confirm("Haluatko varmasti tyhjentää lokin?")) return;
+                fetch(ajaxurl, {
+                    method: "POST",
+                    headers: {"Content-Type":"application/x-www-form-urlencoded"},
+                    body: "action=inv2_clear_log&nonce=" + inv2_ajax_nonce + "&type=" + btn.dataset.type
+                }).then(() => loadLogs());
+            };
+        });
+    }
+    
+    attachButtonEvents(document);
+    
+    </script></div>';
 }
 
-/* LOG CARD */
-
 function inv2_log_card($title, $path, $id) {
-
-    $download = admin_url('admin.php?page=inv2-monitor&inv2_download='.urlencode($path));
-
-    return '
-    <div class="inv2-card">
-        <h3>'.$title.'</h3>
-        <div style="margin-bottom:8px;">
-            <a class="button" href="'.$download.'">Lataa</a>
-            <button class="button inv2-copy" data-target="'.$id.'">Kopioi</button>
-            <button class="button inv2-clear" data-type="'.($id === 'log_b' ? 'b' : 'c').'">Tyhjennä loki</button>
-        </div>
-        <div id="'.$id.'" class="inv2-log"></div>
-    </div>';
+    $url = admin_url('admin.php?page=inv2-monitor&inv2_download='.urlencode($path));
+    return '<div class="inv2-log-column"><h3 style="margin-top:0;">'.$title.'</h3><div style="margin-bottom:8px;"><a class="button" href="'.esc_url($url).'">Lataa .txt</a> <button class="button inv2-copy" data-target="'.$id.'">Kopioi leikepöydälle</button> <button class="button inv2-clear" data-type="'.($id === 'log_b' ? 'b' : 'c').'">Tyhjennä</button></div><div id="'.$id.'" class="inv2-log">Ladataan...</div></div>';
 }

@@ -9,6 +9,8 @@ if (php_sapi_name() !== 'cli') {
     exit;
 }
 
+date_default_timezone_set('Europe/Helsinki');
+
 // CONFIG (ENV)
 
 $DEBUG = filter_var(getenv('CRON_C_DEBUG'), FILTER_VALIDATE_BOOLEAN);
@@ -327,6 +329,7 @@ while (true) {
         $qty      = (int)($c['remaining'] ?? 0);
         $category = (string)($c['category']['name'] ?? '');
         $sku      = "snipe-consumable-$id";
+        $description = trim((string)($c['notes'] ?? ''));
 
         if (!$id || $name === '') continue;
 
@@ -368,11 +371,12 @@ while (true) {
             }
         }
 
-        $visible = ($qty > 0) && $hasBeenPublished;
+        $visible = $qty > 0;
 
-        if ($woo && ($woo['status'] ?? '') === 'publish') {
+        if ($visible) {
             $hasBeenPublished = true;
         }
+
 
 
         $payload = [
@@ -385,6 +389,8 @@ while (true) {
             'status'             => $visible ? 'publish' : 'private',
             'catalog_visibility' => $visible ? 'visible' : 'hidden',
             'categories'         => $categoriesPayload,
+            'description'       => $description,
+            'short_description' => $description,
             'meta_data' => [
                 ['key' => '_snipeit_consumable_id',    'value' => $id],
                 ['key' => '_snipe_has_been_published', 'value' => $hasBeenPublished ? 'yes' : 'no'],

@@ -3,7 +3,6 @@
  * Cron B – Orders → Snipe-IT
  *
  * - Hakee WooCommerce tilaukset (processing, completed)
- * - Aggregoi line_items → consumable qty
  * - Checkouttaa consumablen TASAN KERRAN / tilaus
  * - Luottaa Snipe-IT checkoutiin varastototuutena
  * - Estää tuplakäsittelyn (_snipe_synced)
@@ -15,6 +14,8 @@ if (php_sapi_name() !== 'cli') {
     http_response_code(403);
     exit;
 }
+
+date_default_timezone_set('Europe/Helsinki');
 
 $DEBUG = filter_var(getenv('CRON_B_DEBUG'), FILTER_VALIDATE_BOOLEAN);
 
