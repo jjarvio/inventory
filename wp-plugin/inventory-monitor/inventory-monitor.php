@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Inventory monitor
- * Description: Näyttää cron-ajojen älykkään yhteenvedon. Raakalokit, suodattimet ja asetukset.
- * Version: 1.4
+ * Description: Näyttää cron-ajojen älykkään yhteenvedon. Raakalokit, suodattimet ja asetukset tyylikkäissä laajennettavissa laatikoissa.
+ * Version: 1.6.7
  * Author: jjarvio
  */
 
@@ -260,7 +260,7 @@ function inv2_render() {
     }
 
     // ÄLYKÄS KÄSITTELIJÄ VIIMEISIMMÄLLE AJOLLE
-    function renderLatest(id, logId, type, lines, title, startMarker, endMarker) {
+    function renderLatest(id, logId, lines, title, startMarker, endMarker) {
         const el = document.getElementById(id);
         if (!el) return;
 
@@ -290,11 +290,11 @@ function inv2_render() {
             runLines = lines.slice(startIndex);
         }
 
+        // Täältä on nyt poistettu Tyhjennä-nappi, jäljelle jäi vain Kopioi
         let html = `<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
                         <h3 style="margin:0; font-size:15px; color:#1d2327;">${title}</h3>
                         <div>
                             <button class="button button-small inv2-copy" data-target="mini_${logId}">Kopioi</button>
-                            <button class="button button-small inv2-clear" data-type="${type}">Tyhjennä</button>
                         </div>
                     </div>`;
 
@@ -348,9 +348,9 @@ function inv2_render() {
         .then(d => {
             if(d.success === false) return;
             
-            // Viimeisin ajo
-            renderLatest("latest_b", "log_b", "b", d.b || [], "Yhteenveto: Tilaukset → Snipe-IT", "Cron B Orders START", "Cron B Orders END");
-            renderLatest("latest_c", "log_c", "c", d.c || [], "Yhteenveto: Snipe-IT → Verkkokauppa", "Cron C Consumables START", "Cron C Consumables END");
+            // Viimeisin ajo (kutsusta poistettu "type" parametri jota tyhjennys-nappi käytti)
+            renderLatest("latest_b", "log_b", d.b || [], "Yhteenveto: Tilaukset → Snipe-IT", "Cron B Orders START", "Cron B Orders END");
+            renderLatest("latest_c", "log_c", d.c || [], "Yhteenveto: Snipe-IT → Verkkokauppa", "Cron C Consumables START", "Cron C Consumables END");
 
             // Raakalokit
             render("log_b", d.b || []);
@@ -404,6 +404,7 @@ function inv2_render() {
             };
         });
 
+        // Tyhjennä-nappien logiikka pidetty täällä tallessa raakalokien nappeja varten
         container.querySelectorAll(".inv2-clear").forEach(btn => {
             btn.onclick = () => {
                 if (!confirm("Haluatko varmasti tyhjentää lokin?")) return;
