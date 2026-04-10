@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Inventory monitor
- * Description: Näyttää cron-ajojen älykkään yhteenvedon. Raakalokit, suodattimet ja asetukset.
- * Version: 1.4
+ * Description: Näyttää cron-ajojen älykkään yhteenvedon. Raakalokit, suodattimet ja asetukset korteissa.
+ * Version: 1.4.0
  * Author: jjarvio
  */
 
@@ -14,11 +14,12 @@ const INV2_OPTION_KEY = 'inv2_monitor_settings';
 
 function inv2_default_settings() {
     return [
-        'php_binary'    => '/usr/local/bin/php',
-        'cron_b_script' => '/home/USER/cron/cron_b_orders_to_snipe.php',
-        'cron_c_script' => '/home/USER/cron/cron_c_consumables_sync.php',
-        'cron_b_log'    => '/home/USER/cron/logs/cron_b_orders.log',
-        'cron_c_log'    => '/home/USER/cron/logs/cron_c_consumables.log',
+        'php_binary'       => '/usr/local/bin/php',
+        'cron_b_script'    => '/home/USER/cron/cron_b_orders_to_snipe.php',
+        'cron_c_script'    => '/home/USER/cron/cron_c_consumables_sync.php',
+        'cron_b_log'       => '/home/USER/cron/logs/cron_b_orders.log',
+        'cron_c_log'       => '/home/USER/cron/logs/cron_c_consumables.log',
+        'auto_clear_days'  => '7', // Uusi asetus: 7 päivän välein
     ];
 }
 
@@ -33,6 +34,40 @@ add_action('admin_menu', function () {
 add_action('admin_init', function () {
     register_setting('inv2_monitor', INV2_OPTION_KEY);
 });
+
+/* AUTOMATIC LOG CLEANUP (WP-CRON) */
+
+// Varmistetaan, että päivittäinen siivousajastin on käynnissä
+add_action('init', function() {
+    if (!wp_next_scheduled('inv2_auto_clear_logs_event')) {
+        wp_schedule_event(time(), 'daily', 'inv2_auto_clear_logs_event');
+    }
+});
+
+add_action('inv2_auto_clear_logs_event', function() {
+    $s = inv2_get_settings();
+    $days = (int)($s['auto_clear_days'] ?? 0);
+
+    // Jos asetus on 0, automatiikka on pois päältä
+    if ($days > 0) {
+        $last_clear = (int)get_option('inv2_last_auto_clear', 0);
+        
+        // Tarkistetaan onko kulunut X päivää viimeisestä tyhjennyksestä
+        if (time() - $last_clear >= $days * DAY_IN_SECONDS) {
+            
+            if (file_exists($s['cron_b_log']) && is_writable($s['cron_b_log'])) {
+                file_put_contents($s['cron_b_log'], '');
+            }
+            if (file_exists($s['cron_c_log']) && is_writable($s['cron_c_log'])) {
+                file_put_contents($s['cron_c_log'], '');
+            }
+            
+            // Päivitetään viimeisimmän tyhjennyksen aikaleima tietokantaan
+            update_option('inv2_last_auto_clear', time());
+        }
+    }
+});
+
 
 /* AJAX RUN SCRIPT (Tausta-ajo) */
 
@@ -58,13 +93,18 @@ add_action('wp_ajax_inv2_run_script', function () {
 add_action('wp_ajax_inv2_fetch_logs', function () {
     if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
 
-    $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 100;
-    $limit = max(1, min($limit, 1000));
+    $limit_val = isset($_GET['limit']) ? $_GET['limit'] : '100';
+    $is_all = ($limit_val === 'all');
+    $limit = $is_all ? 'all' : max(1, (int)$limit_val);
+    
     $s = inv2_get_settings();
 
-    $read = function($file) use ($limit) {
+    $read = function($file) use ($limit, $is_all) {
         if (!file_exists($file)) return [];
-        $output = shell_exec('tail -n ' . $limit . ' ' . escapeshellarg($file));
+        
+        $cmd = $is_all ? 'cat ' . escapeshellarg($file) : 'tail -n ' . $limit . ' ' . escapeshellarg($file);
+        
+        $output = shell_exec($cmd);
         if (!$output) return [];
         return explode("\n", rtrim($output));
     };
@@ -87,6 +127,10 @@ add_action('wp_ajax_inv2_clear_log', function () {
     $file = $map[$type];
     if (!file_exists($file) || !is_writable($file)) wp_send_json_error('Ei voi kirjoittaa lokiin');
     file_put_contents($file, '');
+    
+    // Nollataan myös automaattisen tyhjennyksen ajastin, koska tyhjennettiin manuaalisesti
+    update_option('inv2_last_auto_clear', time());
+    
     wp_send_json_success();
 });
 
@@ -125,7 +169,7 @@ function inv2_render() {
     // Toimintonapit
     echo '<div class="inv2-toolbar">';
     echo '<button class="button button-primary inv2-run-btn" data-type="b">Aja tilaukset nyt</button>';
-    echo '<button class="button button-primary inv2-run-btn" data-type="c">Aja tuotteet nyt</button>';
+    echo '<button class="button button-primary inv2-run-btn" data-type="c">Hae tuotteet nyt</button>';
     echo '</div>';
     
     echo '</div>'; // Sulkee inv2-card
@@ -154,6 +198,7 @@ function inv2_render() {
             <option value="200">200</option>
             <option value="500">500</option>
             <option value="1000">1000</option>
+            <option value="all">Kaikki</option>
           </select></span>';
     echo '<input type="text" id="inv2-search" placeholder="Hae raakalokista...">';
     echo '<label><input type="checkbox" id="inv2-errors"> Vain virheet</label>';
@@ -172,8 +217,16 @@ function inv2_render() {
     echo '<div id="inv2-settings-container" style="display: none; padding: 0 15px 15px 15px; border-top: 1px solid #e2e4e7;">';
     echo '<form method="post" action="options.php" style="margin-top: 15px;">';
     settings_fields('inv2_monitor');
-    foreach ($s as $k => $v) {
-        echo '<p><strong>'.$k.'</strong><br><input class="regular-text code" name="'.INV2_OPTION_KEY.'['.$k.']" value="'.esc_attr($v).'"></p>';
+    
+    // Luetaan vain viralliset asetukset (piilotetaan tietokannan vanhat "haamut")
+    $defaults = inv2_default_settings();
+    
+    foreach ($defaults as $k => $default_v) {
+        $v = isset($s[$k]) ? $s[$k] : $default_v;
+        $label = $k;
+        if ($k === 'auto_clear_days') $label = 'Automaattinen tyhjennys (päivää) - 0 = pois päältä';
+        
+        echo '<p><strong>'.$label.'</strong><br><input class="regular-text code" name="'.INV2_OPTION_KEY.'['.$k.']" value="'.esc_attr($v).'"></p>';
     }
     submit_button();
     echo '</form>';
@@ -260,7 +313,7 @@ function inv2_render() {
     }
 
     // ÄLYKÄS KÄSITTELIJÄ VIIMEISIMMÄLLE AJOLLE
-    function renderLatest(id, logId, type, lines, title, startMarker, endMarker) {
+    function renderLatest(id, logId, lines, title, startMarker, endMarker) {
         const el = document.getElementById(id);
         if (!el) return;
 
@@ -294,7 +347,6 @@ function inv2_render() {
                         <h3 style="margin:0; font-size:15px; color:#1d2327;">${title}</h3>
                         <div>
                             <button class="button button-small inv2-copy" data-target="mini_${logId}">Kopioi</button>
-                            <button class="button button-small inv2-clear" data-type="${type}">Tyhjennä</button>
                         </div>
                     </div>`;
 
@@ -349,8 +401,8 @@ function inv2_render() {
             if(d.success === false) return;
             
             // Viimeisin ajo
-            renderLatest("latest_b", "log_b", "b", d.b || [], "Yhteenveto: Tilaukset → Snipe-IT", "Cron B Orders START", "Cron B Orders END");
-            renderLatest("latest_c", "log_c", "c", d.c || [], "Yhteenveto: Snipe-IT → Verkkokauppa", "Cron C Consumables START", "Cron C Consumables END");
+            renderLatest("latest_b", "log_b", d.b || [], "Yhteenveto: Tilaukset → Snipe-IT", "Cron B Orders START", "Cron B Orders END");
+            renderLatest("latest_c", "log_c", d.c || [], "Yhteenveto: Snipe-IT → Verkkokauppa", "Cron C Consumables START", "Cron C Consumables END");
 
             // Raakalokit
             render("log_b", d.b || []);
