@@ -19,7 +19,7 @@ function inv2_default_settings() {
         'cron_c_script'    => '/home/USER/cron/cron_c_consumables_sync.php',
         'cron_b_log'       => '/home/USER/cron/logs/cron_b_orders.log',
         'cron_c_log'       => '/home/USER/cron/logs/cron_c_consumables.log',
-        'auto_clear_days'  => '7', // Uusi asetus: 7 päivän välein
+        'auto_clear_days'  => '7',
     ];
 }
 
@@ -88,7 +88,7 @@ add_action('wp_ajax_inv2_run_script', function () {
     wp_send_json_success();
 });
 
-/* AJAX LOG FETCH */
+/* AJAX LOG FETCH ( Lokien haku ) */
 
 add_action('wp_ajax_inv2_fetch_logs', function () {
     if (!current_user_can('manage_options')) wp_send_json_error('Unauthorized');
@@ -312,7 +312,7 @@ function inv2_render() {
         if (el.innerHTML !== html) el.innerHTML = html;
     }
 
-    // ÄLYKÄS KÄSITTELIJÄ VIIMEISIMMÄLLE AJOLLE
+    // KÄSITTELIJÄ VIIMEISIMMÄLLE AJOLLE
     function renderLatest(id, logId, lines, title, startMarker, endMarker) {
         const el = document.getElementById(id);
         if (!el) return;
